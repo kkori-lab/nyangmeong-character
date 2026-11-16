@@ -44,9 +44,16 @@ src/
 ├─ pyval.rs       pydantic·Python 값 변환 규칙
 ├─ pyjson.rs      Python json.loads·dumps 모양
 ├─ logs.rs        로그 형식                                         ← core/logs.py
+├─ pil.rs         Pillow 동작(열기·NEAREST·붙이기·thumbnail·PNG)    ← PIL 13.0.0
+├─ ndimage.rs     scipy.ndimage(label·침식·팽창·채우기·번짐)        ← scipy 1.18.1
+├─ engine.rs      시트 분할·cut_item·사진 정규화                    ← character/engine.py
+├─ canvas.rs      눈 찾기·512 배치                                  ← character/canvas.py
+├─ bake.rs        착용 컷 정렬·아이템 레이어·validate               ← character/bake.py
+├─ compose.rs     착장 합성                                         ← character/compose.py
 └─ character.rs   /ai/characters·/ai/items 경로                     ← character/router.py
-contract/         Python↔러스트 대조 테스트(가짜 Java)
-tests/            통합 테스트(정답 파일 비교 등)
+contract/         Python↔러스트 대조 테스트(가짜 Java), 이미지 정답 만들기(gold_images.py)·측정(image_bench.py)
+tests/            통합 테스트(정답 파일 비교 등), fixtures/image/ 합성 정답(실제 그림 아님)
+examples/         측정 프로그램(image_bench.rs)
 deploy/           systemd 설치(Actions가 씀)
 ops/              서버에서 손으로 돌리는 스크립트(측정)
 ```
@@ -55,7 +62,7 @@ ops/              서버에서 손으로 돌리는 스크립트(측정)
 
 ## 검증 명령
 
-`sh scripts/check.sh` 하나다: `cargo fmt --check`, `cargo clippy --all-targets -D warnings`, `cargo test`, 대조 테스트(`scripts/contract.sh`). 대조 테스트는 옆 폴더의 `nyangmeong-ai`(`../ai`·`../nyangmeong-ai` 또는 `AI_REPO`)와 그 `.venv`가 있어야 돈다. CI(`build.yml`)는 대조를 뺀 cargo 검사만 돈다.
+`sh scripts/check.sh` 하나다: `cargo fmt --check`, `cargo clippy --all-targets -D warnings`, `cargo test`, 대조 테스트(`scripts/contract.sh`). 대조 테스트는 옆 폴더의 `nyangmeong-ai`(`../ai`·`../nyangmeong-ai` 또는 `AI_REPO`)와 그 `.venv`가 있어야 돈다. CI(`build.yml`)는 대조를 뺀 cargo 검사만 돈다. 실제 시트 정답 비교는 `CHARACTER_SHEETS_DIR`(bare.png·worn_<부위코드>.png 폴더)가 있는 PC의 `check.sh`에서 돈다(`scripts/gold.sh`가 정답을 만든다).
 
 ## 나머지 규칙이 있는 곳
 

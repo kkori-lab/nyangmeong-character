@@ -20,6 +20,10 @@ run() {
 
 run "cargo fmt --check" cargo fmt --check
 run "cargo clippy" cargo clippy --all-targets -q -- -D warnings
+# 정답이 있는 PC(CHARACTER_SHEETS_DIR)는 실제 시트 정답을 원본 Python으로 다시 만든 뒤 cargo test가 비교한다
+if [ -n "${CHARACTER_SHEETS_DIR:-}" ]; then
+  run "이미지 정답 만들기 (실제 시트, scripts/gold.sh)" sh scripts/gold.sh
+fi
 run "cargo test" cargo test -q
 run "대조 테스트 (Python↔러스트, contract/)" sh scripts/contract.sh
 echo "cargo fmt · clippy · test · 대조 테스트 통과"
