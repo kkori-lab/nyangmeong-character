@@ -91,8 +91,8 @@
 실사용에서 거의 안 나는 것만 둔다. 새로 생기면 여기에 적는다.
 
 - OpenAI: Python SDK의 `User-Agent`·`x-stainless-*` 헤더는 없다. 재시도 대기는 같은 범위(0.375~0.5초)의 시계 기반 난수다. `OPENAI_BASE_URL`은 러스트가 `.env.local`에서도 읽는다(SDK는 환경변수만)
-- OpenAI 쓰기 제한 시간 없음: httpx는 쓰기에도 180초지만 reqwest는 연결·읽기만 건다(위 "쓰기 제한 시간 없음"과 같은 이유). 업로드 중 상대가 받기를 멈추면 Python은 시간 초과 뒤 재시도·502, 여기는 계속 기다린다
-- 눈 판독 답의 넘치는 실수(`1e400`)와 깊은 중첩(128 초과)은 serde_json이 거절해 기본 눈값이 된다(Python은 `inf`로 읽고 값을 그대로 씀)
+- 제한 시간 재는 방식: httpx는 연결·읽기·쓰기를 한 번마다 180초씩 잰다. reqwest `read_timeout`은 요청을 보낼 때 한 번 맞춘 타이머라 업로드와 응답 머리 대기를 합쳐 잰다(Java 호출은 3초·시트 15초). 멈춘 상대에서는 둘 다 시간 초과가 나고 OpenAI는 SDK처럼 한 번 재시도한다(`tests/timeouts.rs`). 큰 업로드가 느리게 오래 걸려도 합계가 한도 안이면 같다
+- 눈 판독 답의 깊은 중첩: Python은 C 재귀 한도까지 받는다(3.13 이 PC 2998단계, 한도는 플랫폼마다 다름). serde_json은 128단계에서 거절해 기본 눈값이 된다(깊이를 맞추면 스택 넘침 위험). `1e400`·4300자리 정수 같은 숫자는 Python과 같게 읽는다(`pyjson::loads_str_lenient`, 정답 표 `parse_eyes`)
 - `retry-after`가 HTTP 날짜 모양이면 SDK는 남은 초를 따르지만 여기서는 무시하고 기본 대기를 쓴다(OpenAI는 초 숫자로 보냄)
 - 눈 판독 답의 짝 없는 서로게이트 이스케이프(`\ud800` 꼴)는 Python `json.loads`가 받지만 여기서는 거절해 기본 눈값이 된다. `NaN`·`Infinity` 상수는 받는다(값은 안 쓰므로 `null`로 읽음)
 - OpenAI 그림 base64는 알파벳 밖 글자를 버리고 읽는다(`b64decode` 비엄격과 같음). 패딩이 모자란 글자는 Python과 달리 오류(둘 다 502라 응답은 같음)
@@ -102,7 +102,6 @@
 - 정수는 i64까지(Python은 무제한 → Java가 4xx)
 - `json.loads`의 UTF-16·NaN·Infinity 미지원
 - multipart 비정상 본문 세부(multer와 python-multipart)
-- 쓰기 제한 시간 없음(reqwest는 연결·읽기만)
 - 로그는 날짜별 파일 대신 journald
 - 307 Location의 scheme은 `X-Forwarded-Proto`(없으면 http)
 - 이미지 PNG의 바이트(압축)는 Pillow(`optimize=True`)와 다르고 디코드한 화소는 같다. 색 형식(RGB·RGBA)은 같다

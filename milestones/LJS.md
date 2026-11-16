@@ -24,7 +24,7 @@
 - 결과: 합성 시트·아이템·사진·scipy 정답과 이 PC의 실제 시트 비교가 모두 같음. 측정 표는 `docs/design/migration.md` "M3에서 옮긴 것"
 - 연결 남음: 2번 서버 최대 메모리(`Maximum resident set size`) 측정 (Actions `build`의 `image_bench` 산출물, LJS)
 
-## M4 외부 연결 (프롬프트·OpenAI·Java 내부 API·관리자 경로 3개) — 진행
+## M4 외부 연결 (프롬프트·OpenAI·Java 내부 API·관리자 경로 3개) — 끝
 - 기능: 프롬프트·눈 판독, OpenAI 클라이언트(rustls 추가), Java 내부 API 클라이언트, 관리자 경로 3개(bake-hints·pixel-image·trial-preview) 핸들러 본문, 대조용 가짜 Java·OpenAI
 - 원본: `app/character/engine.py`(프롬프트)·`clients.py`·`repository.py`·`service.py`·`router.py`
 - 완료 조건: 명령: `sh scripts/check.sh`(핸들러까지 가는 대조 추가)
