@@ -1,0 +1,21 @@
+[Unit]
+Description=nyangmeong character server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=nmchar
+Group=nmchar
+Environment=PORT=8100
+# OpenAI 키 등 비밀값 (M4부터, root 소유 600). 없어도 시작한다
+EnvironmentFile=-/etc/nyangmeong-character.env
+ExecStart=/opt/nyangmeong-character/nyangmeong-character
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
