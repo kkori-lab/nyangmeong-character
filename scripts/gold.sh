@@ -1,6 +1,7 @@
 #!/bin/sh
 # 이미지 계산 정답 만들기(contract/gold_images.py). nyangmeong-ai 저장소(AI_REPO, 없으면 ../ai·../nyangmeong-ai)의 가상환경 Python으로 돈다.
 # 사용: sh scripts/gold.sh          실제 시트 정답 : CHARACTER_SHEETS_DIR(bare.png, worn_<부위코드>.png) → CHARACTER_GOLD_DIR(기본 target/character-gold). 커밋하지 않는다
+#       sh scripts/gold.sh prompts  프롬프트·눈 판독 정답(tests/fixtures/prompts.json, 커밋 대상)을 다시 만든다 : 원본 코드가 바뀌었을 때만
 #       sh scripts/gold.sh synth    합성 정답(tests/fixtures/image, 커밋 대상)을 다시 만든다 : 원본 코드가 바뀌었을 때만
 cd "$(git rev-parse --show-toplevel)" || exit 1
 
@@ -15,6 +16,10 @@ for p in "$ai/.venv/Scripts/python.exe" "$ai/.venv/bin/python"; do
   [ -x "$p" ] && { py=$p; break; }
 done
 [ -n "$py" ] || { echo "$ai에 .venv가 없습니다. 그 저장소에서 uv sync 하세요"; exit 1; }
+
+if [ "$1" = prompts ]; then
+  exec "$py" -I contract/gold_prompts.py "$ai" tests/fixtures/prompts.json
+fi
 
 if [ "$1" = synth ]; then
   rm -rf tests/fixtures/image/sheets tests/fixtures/image/items tests/fixtures/image/photos tests/fixtures/image/ndimage.json

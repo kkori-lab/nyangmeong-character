@@ -2,6 +2,7 @@
 
 use crate::backend::Backend;
 use crate::character::{self, Ctx};
+use crate::clients::OpenAiClient;
 use crate::config::Settings;
 use crate::error::{self, ApiError};
 use crate::logs;
@@ -21,12 +22,16 @@ use std::time::Instant;
 pub struct AppState {
     pub settings: Arc<Settings>,
     pub backend: Backend,
+    /// OpenAI 키가 없으면 None
+    pub client: Option<Arc<OpenAiClient>>,
 }
 
 impl AppState {
     pub fn new(settings: Settings) -> Self {
         let backend = Backend::new(&settings.backend_base_url);
+        let client = OpenAiClient::from_settings(&settings).map(Arc::new);
         Self {
+            client,
             settings: Arc::new(settings),
             backend,
         }
@@ -97,6 +102,7 @@ async fn dispatch(State(state): State<AppState>, request: Request) -> Response {
     let matched = character::match_path(&path).expect("methods_for에서 확인");
     let ctx = Ctx {
         backend: &state.backend,
+        client: state.client.as_deref(),
         method: &parts.method,
         headers: &parts.headers,
         body,

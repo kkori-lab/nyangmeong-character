@@ -1,16 +1,22 @@
 //! `app/character/router.py` 경로 7개 : 핸들러 전 단계(본문 읽기 → X-Requested-With →
-//! 인증 → 값 검증)까지 Python과 같다. 핸들러 본문은 M4에서 옮긴다(지금은 501)
+//! 인증 → 값 검증)까지 Python과 같다. 핸들러 본문은 관리자 3개(bake-hints·pixel-image·trial-preview)를
+//! M4에서 옮겼고, 나머지 4개는 M5에서 옮긴다(그때까지 501)
 
 use crate::auth;
 use crate::backend::Backend;
+use crate::clients::OpenAiClient;
 use crate::error::ApiError;
 use crate::form::{self, FormData, JsonBody};
+use crate::image::MAX_IMAGE_BYTES;
 use crate::pyval;
-use crate::response::AppError;
-use axum::http::{HeaderMap, Method};
+use crate::repository::JavaRepository;
+use crate::response::{self, AppError};
+use crate::service;
+use axum::body::Body as HttpBody;
+use axum::http::{HeaderMap, Method, header};
 use axum::response::Response;
 use bytes::Bytes;
-use serde_json::{Map, Value};
+use serde_json::{Map, Value, json};
 
 /// FN-ADM-070-02 : 관리자 아이템 등록 보조
 pub const ITEM_NM_MAX: usize = 50;
@@ -73,6 +79,8 @@ pub fn match_path(path: &str) -> Option<Matched> {
 
 pub struct Ctx<'a> {
     pub backend: &'a Backend,
+    /// 키가 없으면 None : 업로드 검증 뒤 502
+    pub client: Option<&'a OpenAiClient>,
     pub method: &'a Method,
     pub headers: &'a HeaderMap,
     pub body: Bytes,
@@ -137,8 +145,69 @@ pub async fn handle(matched: Matched, ctx: Ctx<'_>) -> Result<Response, ApiError
         }
         _ => unreachable!("경로마다 본문 종류가 정해져 있음"),
     }
-    // 5. 핸들러 : M4에서 옮긴다
-    Err(AppError::new("NOT_IMPLEMENTED", 501, "러스트로 옮기는 중입니다.").into())
+    // 5. 핸들러
+    match (matched.route, &body) {
+        (BakeHints, Body::Form(form)) => {
+            let (image, regn_cd, item_nm) = admin_item_form(form);
+            let hint = service::describe_item(
+                ctx.client,
+                upload_bytes(image),
+                &image.filename,
+                regn_cd,
+                item_nm,
+            )
+            .await?;
+            Ok(response::success(Some(json!({ "bakeHint": hint })), 200))
+        }
+        (PixelImage, Body::Form(form)) => {
+            let (image, regn_cd, item_nm) = admin_item_form(form);
+            let png = service::draw_item(
+                ctx.client,
+                upload_bytes(image),
+                &image.filename,
+                regn_cd,
+                item_nm,
+            )
+            .await?;
+            Ok(png_response(png))
+        }
+        (TrialPreview, Body::Json(json)) => {
+            let (pixel_char_sn, regn_cd, bake_hint) =
+                trial_request(json).expect("값 검증을 통과함");
+            let repo = JavaRepository::new(
+                ctx.backend.clone(),
+                ctx.headers.get(header::COOKIE).cloned(),
+            );
+            let png =
+                service::trial_preview(ctx.client, &repo, pixel_char_sn, &regn_cd, &bake_hint)
+                    .await?;
+            Ok(png_response(png))
+        }
+        // 굽기 큐와 회원 경로 : M5
+        _ => Err(AppError::new("NOT_IMPLEMENTED", 501, "러스트로 옮기는 중입니다.").into()),
+    }
+}
+
+/// 업로드는 10MB + 1바이트까지만 읽음 : 초과 판정용
+fn upload_bytes(file: &form::UploadFile) -> &[u8] {
+    &file.data[..file.data.len().min(MAX_IMAGE_BYTES + 1)]
+}
+
+/// 값 검증을 통과한 관리자 아이템 폼 : image, regnCd, itemNm
+fn admin_item_form(form: &FormData) -> (&form::UploadFile, &str, &str) {
+    (
+        form.file("image").expect("값 검증을 통과함"),
+        form.text("regnCd").expect("값 검증을 통과함"),
+        form.text("itemNm").expect("값 검증을 통과함"),
+    )
+}
+
+/// `Response(png, media_type="image/png")`
+fn png_response(png: Vec<u8>) -> Response {
+    Response::builder()
+        .header(header::CONTENT_TYPE, "image/png")
+        .body(HttpBody::from(png))
+        .expect("PNG 응답")
 }
 
 fn path_int(param: Option<&str>) -> Result<i64, ApiError> {
