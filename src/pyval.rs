@@ -102,6 +102,58 @@ pub fn pydantic_str(value: &Value) -> Option<&str> {
     value.as_str()
 }
 
+/// pydantic `float` 필드(lax, 2026-11-16 원본 가상환경으로 확인) : 숫자, bool, 실수 모양 문자열
+/// 문자열은 앞뒤 공백·부호·숫자 사이 밑줄 하나·`inf`·`infinity`·`nan`(대소문자 무시) 허용,
+/// `""`·`"1,5"`·`"0x10"` 거절
+pub fn pydantic_float(value: &Value) -> Option<f64> {
+    match value {
+        Value::Bool(b) => Some(f64::from(u8::from(*b))),
+        Value::Number(n) => n.as_f64(),
+        Value::String(s) => float_str(s),
+        _ => None,
+    }
+}
+
+fn float_str(raw: &str) -> Option<f64> {
+    let text = raw.trim();
+    if !text.is_ascii() {
+        return None;
+    }
+    let bytes = text.as_bytes();
+    let mut clean = String::with_capacity(text.len());
+    for (at, &b) in bytes.iter().enumerate() {
+        if b == b'_' {
+            let between_digits = at > 0
+                && bytes[at - 1].is_ascii_digit()
+                && bytes.get(at + 1).is_some_and(u8::is_ascii_digit);
+            if !between_digits {
+                return None;
+            }
+        } else {
+            clean.push(b as char);
+        }
+    }
+    clean.parse().ok()
+}
+
+/// pydantic `bool` 필드(lax) : bool, 0·1(정수·실수), `true/false/yes/no/on/off/t/f/y/n/1/0`(대소문자 무시, 공백 불가)
+pub fn pydantic_bool(value: &Value) -> Option<bool> {
+    match value {
+        Value::Bool(b) => Some(*b),
+        Value::Number(n) => match n.as_f64()? {
+            0.0 => Some(false),
+            1.0 => Some(true),
+            _ => None,
+        },
+        Value::String(s) => match s.to_ascii_lowercase().as_str() {
+            "true" | "yes" | "on" | "t" | "y" | "1" => Some(true),
+            "false" | "no" | "off" | "f" | "n" | "0" => Some(false),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
 /// Python `len(str)` : 코드 포인트 수
 pub fn py_len(text: &str) -> usize {
     text.chars().count()
@@ -153,6 +205,70 @@ mod tests {
         assert_eq!(pydantic_int(&json!(null)), None);
         assert_eq!(pydantic_int(&json!([1])), None);
         assert_eq!(pydantic_int(&json!("2")), Some(2));
+    }
+
+    #[test]
+    fn pydantic_float_and_bool_match_probe() {
+        let floats = [
+            (json!(1), 1.0),
+            (json!(1.5), 1.5),
+            (json!(true), 1.0),
+            (json!(false), 0.0),
+            (json!("1.5"), 1.5),
+            (json!(" 1.5 "), 1.5),
+            (json!("1_0"), 10.0),
+            (json!("+1"), 1.0),
+            (json!("1e3"), 1000.0),
+            (json!(".5"), 0.5),
+            (json!("5."), 5.0),
+            (json!("inf"), f64::INFINITY),
+            (json!("-inf"), f64::NEG_INFINITY),
+            (json!("infinity"), f64::INFINITY),
+        ];
+        for (value, expected) in floats {
+            assert_eq!(pydantic_float(&value), Some(expected), "{value}");
+        }
+        assert!(pydantic_float(&json!("NaN")).is_some_and(f64::is_nan));
+        for value in [
+            json!(""),
+            json!("a"),
+            json!(null),
+            json!([]),
+            json!({}),
+            json!("1,5"),
+            json!("0x10"),
+            json!("\u{ff11}\u{ff12}"),
+            json!("1__0"),
+            json!("_1"),
+        ] {
+            assert_eq!(pydantic_float(&value), None, "{value}");
+        }
+        let yes = ["true", "TRUE", "yes", "on", "t", "y", "1"];
+        let no = ["false", "no", "off", "f", "n", "0"];
+        for text in yes {
+            assert_eq!(pydantic_bool(&json!(text)), Some(true), "{text}");
+        }
+        for text in no {
+            assert_eq!(pydantic_bool(&json!(text)), Some(false), "{text}");
+        }
+        for value in [json!(true), json!(1), json!(1.0)] {
+            assert_eq!(pydantic_bool(&value), Some(true), "{value}");
+        }
+        for value in [json!(false), json!(0), json!(0.0)] {
+            assert_eq!(pydantic_bool(&value), Some(false), "{value}");
+        }
+        for value in [
+            json!(2),
+            json!(-1),
+            json!(0.5),
+            json!("2"),
+            json!(""),
+            json!(null),
+            json!(" true "),
+            json!("tru"),
+        ] {
+            assert_eq!(pydantic_bool(&value), None, "{value}");
+        }
     }
 
     #[test]

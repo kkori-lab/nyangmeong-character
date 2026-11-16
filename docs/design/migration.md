@@ -55,9 +55,49 @@
 | `src/form.rs`·`src/pyval.rs` | Starlette `request.form()`·`json()`, pydantic lax | 폼 마지막 값, 빈 폼 값 = 없음, multipart 오류 문구, JSON 형식 판정, pydantic `int`(`"1.0"`·`"1_0"`·bool 허용, `"1."`·`"1e3"` 거절) |
 | `src/character.rs`·`src/app.rs` | `character/router.py`, Starlette 라우터 | 경로 7개 + `/health`(`{"status":"ok"}`), 순서: 본문 읽기 → XRW → 인증 → 값 검증 → 핸들러(지금 501), 404·405(`Allow`)·끝 `/` 307 |
 
+## M3에서 옮긴 것 (2026-11-16)
+
+기준: `nyangmeong-ai` e9c3edd, 원본 venv(Pillow 13.0.0·numpy 2.5.4·scipy 1.18.1)가 만든 정답.
+
+- `engine`·`canvas`·`bake`·`compose` 이미지 계산 → `src/pil.rs`·`ndimage.rs`·`engine.rs`·`canvas.rs`·`bake.rs`·`compose.rs`. 화소 단위로 같다: 합성 시트 10·아이템 그림 6·사진 정규화 20·scipy 마스크 8, 실제 시트(맨몸 1 + 착용 5)와 임의 크기 사진 31장
+- Pillow 13 소스(`Resample.c`·`Reduce.c`)에 맞춘 것: `thumbnail`은 세로가 가로보다 두 배 넘게 줄면 세로 먼저, `reduce`는 f32 승수와 `>> 24`, 필터 계수는 `double` 나눗셈
+- 합성 정답 `tests/fixtures/image/`(실제 그림 아님, 다시 만들기 `sh scripts/gold.sh synth`). 실제 시트 비교는 `CHARACTER_SHEETS_DIR`(정답 `target/character-gold`, 커밋 안 함). 정답 float는 repr 문자열(serde_json 기본 실수 읽기가 마지막 한 비트를 틀림)
+
+측정(실제 시트 1024×1024, 개발 PC, 반복 3회 중 가장 빠른 시간, 힙은 할당량 최고치). 2번 서버 최대 RSS는 아직 안 잼:
+
+| 작업 | 러스트 시간(ms) | 러스트 힙(MB) | Python 시간(ms) | Python 힙(MB) |
+| --- | --- | --- | --- | --- |
+| stand_front_cut(맨몸) | 51.9 | 18.0 | 275.3 | 95.4 |
+| place | 4.2 | 1.4 | 87.5 | 5.1 |
+| validate(MYPC0002~0005) | 113~119 | 22.5 | 653~770 | 95.8 |
+| render(착용 5개 전부) | 459.0 | 23.9 | 2351.7 | 97.6 |
+
+## M4 [A]에서 옮긴 것 (2026-11-16)
+
+기준: `nyangmeong-ai` develop(대조 테스트는 `contract/run.py`가 `AI_REF`, 기본 `origin/develop`에서 꺼낸 코드로 돈다). 굽기 큐·회원 경로 4개는 M5.
+
+| 러스트 | Python 원본 | 내용 |
+|---|---|---|
+| `src/engine.rs`·`prompts/` | `engine.py` 프롬프트 쪽, `prompts/` | 프롬프트·눈 판독·굽기 지시 정리. 원본 venv가 만든 정답(`tests/fixtures/prompts.json`, `sh scripts/gold.sh prompts`)과 문자열이 같음 |
+| `src/clients.rs` | `clients.py` | OpenAI 호출(reqwest + rustls). SDK처럼 180초·재시도 1회·`image[]`·필드 순서. 큰 계산은 `heavy`(동시 2) |
+| `src/repository.rs` | `repository.py` | Java 내부 API 10개. 응답 검사는 pydantic lax(`float`·`bool` 규칙을 `pyval.rs`에 추가) |
+| `src/service.rs` | `service.py` 일부 | `describe_item`·`draw_item`·`trial_preview`(`bake_once`·`render`) |
+| `src/character.rs` | `router.py` | 관리자 경로 3개(`bake-hints`·`pixel-image`·`trial-preview`) 핸들러 |
+
+대조 테스트(`contract/`)는 Python·러스트가 가짜 Java·가짜 OpenAI에 보낸 요청(경로·필드·프롬프트·그림 화소)까지 비교한다.
+
 ## 알려진 차이
 
 실사용에서 거의 안 나는 것만 둔다. 새로 생기면 여기에 적는다.
+
+- OpenAI: Python SDK의 `User-Agent`·`x-stainless-*` 헤더는 없다. 재시도 대기는 같은 범위(0.375~0.5초)의 시계 기반 난수다. `OPENAI_BASE_URL`은 러스트가 `.env.local`에서도 읽는다(SDK는 환경변수만)
+- OpenAI 쓰기 제한 시간 없음: httpx는 쓰기에도 180초지만 reqwest는 연결·읽기만 건다(위 "쓰기 제한 시간 없음"과 같은 이유). 업로드 중 상대가 받기를 멈추면 Python은 시간 초과 뒤 재시도·502, 여기는 계속 기다린다
+- 눈 판독 답의 넘치는 실수(`1e400`)와 깊은 중첩(128 초과)은 serde_json이 거절해 기본 눈값이 된다(Python은 `inf`로 읽고 값을 그대로 씀)
+- `retry-after`가 HTTP 날짜 모양이면 SDK는 남은 초를 따르지만 여기서는 무시하고 기본 대기를 쓴다(OpenAI는 초 숫자로 보냄)
+- 눈 판독 답의 짝 없는 서로게이트 이스케이프(`\ud800` 꼴)는 Python `json.loads`가 받지만 여기서는 거절해 기본 눈값이 된다. `NaN`·`Infinity` 상수는 받는다(값은 안 쓰므로 `null`로 읽음)
+- OpenAI 그림 base64는 알파벳 밖 글자를 버리고 읽는다(`b64decode` 비엄격과 같음). 패딩이 모자란 글자는 Python과 달리 오류(둘 다 502라 응답은 같음)
+- `report_success`의 `originY`: `place`가 정수 100을 돌려주는 경우(`min(.., 100)`)를 `Layout.origin_y == 100.0`으로 판별해 `"100"`을 보낸다. 우연히 정확히 100.0인 실수는 Python이 `"100.0"`을 보내지만 여기서는 `"100"`이다(확률 0에 가까움)
+- 큰 이미지 계산은 동시에 2개까지(`HEAVY_CONCURRENCY`). Python은 `asyncio.to_thread` 기본 풀이다. 결과는 같다
 
 - 정수는 i64까지(Python은 무제한 → Java가 4xx)
 - `json.loads`의 UTF-16·NaN·Infinity 미지원

@@ -50,8 +50,12 @@ src/
 ├─ canvas.rs      눈 찾기·512 배치                                  ← character/canvas.py
 ├─ bake.rs        착용 컷 정렬·아이템 레이어·validate               ← character/bake.py
 ├─ compose.rs     착장 합성                                         ← character/compose.py
+├─ clients.rs     OpenAI 호출·큰 계산 동시 수 제한                  ← character/clients.py
+├─ repository.rs  Java 캐릭터 내부 API                              ← character/repository.py
+├─ service.rs     관리자 경로 흐름(굽기 큐는 M5)                    ← character/service.py
 └─ character.rs   /ai/characters·/ai/items 경로                     ← character/router.py
-contract/         Python↔러스트 대조 테스트(가짜 Java), 이미지 정답 만들기(gold_images.py)·측정(image_bench.py)
+prompts/          OpenAI 프롬프트·화풍 그림(원본 app/character/prompts/ 그대로, 바이너리에 넣음)
+contract/         Python↔러스트 대조 테스트(가짜 Java·OpenAI), 정답 만들기(gold_images.py·gold_prompts.py)·측정(image_bench.py)
 tests/            통합 테스트(정답 파일 비교 등), fixtures/image/ 합성 정답(실제 그림 아님)
 examples/         측정 프로그램(image_bench.rs)
 deploy/           systemd 설치(Actions가 씀)

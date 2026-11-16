@@ -12,6 +12,38 @@ pub fn loads(body: &[u8]) -> Option<Value> {
     serde_json::from_str(text).ok()
 }
 
+/// `json.loads(str)` 중 `NaN`·`Infinity`·`-Infinity`(Python만 받는 상수)도 받는 읽기.
+/// 상수는 `null`로 바꿔 읽는다 : 실수 값은 쓰지 않고 문자열 칸만 보는 곳에서만 쓴다
+pub fn loads_str_lenient(text: &str) -> Option<Value> {
+    let mut out = String::with_capacity(text.len());
+    let mut in_string = false;
+    let mut escaped = false;
+    let mut rest = text;
+    while let Some(c) = rest.chars().next() {
+        if in_string {
+            if escaped {
+                escaped = false;
+            } else if c == '\\' {
+                escaped = true;
+            } else if c == '"' {
+                in_string = false;
+            }
+        } else if c == '"' {
+            in_string = true;
+        } else if let Some(constant) = ["-Infinity", "Infinity", "NaN"]
+            .into_iter()
+            .find(|constant| rest.starts_with(constant))
+        {
+            out.push_str("null");
+            rest = &rest[constant.len()..];
+            continue;
+        }
+        out.push(c);
+        rest = &rest[c.len_utf8()..];
+    }
+    serde_json::from_str(&out).ok()
+}
+
 /// `json.dumps(value, ensure_ascii=False)` : 구분자 `", "`·`": "`, 실수는 `repr` 모양
 pub fn dumps(value: &Value) -> Vec<u8> {
     let mut out = Vec::new();

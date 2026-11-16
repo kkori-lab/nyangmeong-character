@@ -9,6 +9,8 @@ pub struct Settings {
     pub backend_base_url: String,
     /// 이미지 생성(OpenAI) : 비면 캐릭터 생성 API 502
     pub openai_api_key: String,
+    /// OpenAI 주소(없으면 `https://api.openai.com/v1`). Python SDK도 같은 환경변수를 읽는다 : 대조 테스트가 가짜 OpenAI를 가리킨다
+    pub openai_base_url: String,
     pub character_image_model: String,
     pub character_vision_model: String,
     /// FN-MYP-010-09 : 외부 호출 한 번의 제한 시간(초)
@@ -34,6 +36,9 @@ impl Settings {
         Self {
             backend_base_url: get("BACKEND_BASE_URL").unwrap_or_default(),
             openai_api_key: get("OPENAI_API_KEY").unwrap_or_default(),
+            openai_base_url: get("OPENAI_BASE_URL")
+                .filter(|url| !url.is_empty())
+                .unwrap_or_else(|| "https://api.openai.com/v1".into()),
             character_image_model: get("CHARACTER_IMAGE_MODEL")
                 .unwrap_or_else(|| "gpt-image-2".into()),
             character_vision_model: get("CHARACTER_VISION_MODEL")
