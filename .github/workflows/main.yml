@@ -1,0 +1,72 @@
+# main에 머지된 PR을 2번 인스턴스(캐릭터 서버)에 배포한다 (nyangmeong-ai main.yml과 같은 흐름)
+# 서버(RAM 1GB)에서 cargo build를 돌리면 OOM이 날 수 있어 러너에서 빌드하고 실행 파일만 올린다
+# ubuntu-24.04 고정 : 러너 glibc 2.39 = 2번 Ubuntu 24.04 (ubuntu-latest가 바뀌면 서버에서 안 돌 수 있음)
+# 시크릿(이 저장소, 값은 2번 기준): OCI_HOST, OCI_USER, OCI_PORT, KSMARTDEV(배포 전용 개인 키), ENV_FILE(없어도 됨)
+name: Deploy Character
+
+on:
+  pull_request:
+    branches: [ "main" ]
+    types: [closed]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+
+    # merge된 PR만 실행 (수동 실행은 항상)
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build
+        run: |
+          cargo build --release
+          mkdir -p dist
+          cp target/release/nyangmeong-character dist/
+          cp deploy/nyangmeong-character.service deploy/install.sh dist/
+
+      - name: Upload to Character Server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.OCI_HOST }}
+          username: ${{ secrets.OCI_USER }}
+          key: ${{ secrets.KSMARTDEV }}
+          port: ${{ secrets.OCI_PORT }}
+          source: dist/*
+          target: /tmp/nyangmeong-character-deploy
+          strip_components: 1
+          overwrite: true
+
+      - name: Deploy to Character Server
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          ENV_FILE: ${{ secrets.ENV_FILE }}
+        with:
+          host: ${{ secrets.OCI_HOST }}
+          username: ${{ secrets.OCI_USER }}
+          key: ${{ secrets.KSMARTDEV }}
+          port: ${{ secrets.OCI_PORT }}
+          envs: ENV_FILE
+          script_stop: true
+          script: |
+            # 1. 비밀값 파일 : 시크릿 ENV_FILE이 있으면 매 배포 덮어씀 (root 600)
+            if [ -n "$ENV_FILE" ]; then
+              printf '%s\n' "$ENV_FILE" | sudo tee /etc/nyangmeong-character.env > /dev/null
+              sudo chmod 600 /etc/nyangmeong-character.env
+              echo "env 갱신 완료"
+            fi
+
+            # 2. 설치·재시작·/health 확인 (deploy/install.sh)
+            sudo bash /tmp/nyangmeong-character-deploy/install.sh
