@@ -1,0 +1,234 @@
+//! `app/character/router.py` 경로 7개 : 핸들러 전 단계(본문 읽기 → X-Requested-With →
+//! 인증 → 값 검증)까지 Python과 같다. 핸들러 본문은 M4에서 옮긴다(지금은 501)
+
+use crate::auth;
+use crate::backend::Backend;
+use crate::error::ApiError;
+use crate::form::{self, FormData, JsonBody};
+use crate::pyval;
+use crate::response::AppError;
+use axum::http::{HeaderMap, Method};
+use axum::response::Response;
+use bytes::Bytes;
+use serde_json::{Map, Value};
+
+/// FN-ADM-070-02 : 관리자 아이템 등록 보조
+pub const ITEM_NM_MAX: usize = 50;
+pub const BAKE_HINT_INPUT_MAX: usize = 300;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Route {
+    CreateCharacter,
+    Preview,
+    EquippedImage,
+    BakeHints,
+    PixelImage,
+    TrialPreview,
+    BakeItem,
+}
+
+/// 경로 일치 결과 : 경로 매개변수(디코딩된 문자열)
+pub struct Matched {
+    pub route: Route,
+    pub param: Option<String>,
+}
+
+/// Starlette 경로 정규식 `{name}` = `[^/]+`, 디코딩된 경로로 맞춘다
+pub fn match_path(path: &str) -> Option<Matched> {
+    let segments: Vec<&str> = path.strip_prefix('/')?.split('/').collect();
+    let param = |s: &str| (!s.is_empty()).then(|| s.to_owned());
+    let matched = match segments.as_slice() {
+        ["ai", "characters"] => Matched {
+            route: Route::CreateCharacter,
+            param: None,
+        },
+        ["ai", "characters", sn, "preview"] => Matched {
+            route: Route::Preview,
+            param: Some(param(sn)?),
+        },
+        ["ai", "characters", sn, "equipped-image"] => Matched {
+            route: Route::EquippedImage,
+            param: Some(param(sn)?),
+        },
+        ["ai", "items", "bake-hints"] => Matched {
+            route: Route::BakeHints,
+            param: None,
+        },
+        ["ai", "items", "pixel-image"] => Matched {
+            route: Route::PixelImage,
+            param: None,
+        },
+        ["ai", "items", "trial-preview"] => Matched {
+            route: Route::TrialPreview,
+            param: None,
+        },
+        ["ai", "items", sn, "bake"] => Matched {
+            route: Route::BakeItem,
+            param: Some(param(sn)?),
+        },
+        _ => return None,
+    };
+    Some(matched)
+}
+
+pub struct Ctx<'a> {
+    pub backend: &'a Backend,
+    pub method: &'a Method,
+    pub headers: &'a HeaderMap,
+    pub body: Bytes,
+}
+
+enum Body {
+    None,
+    Form(FormData),
+    Json(JsonBody),
+}
+
+pub async fn handle(matched: Matched, ctx: Ctx<'_>) -> Result<Response, ApiError> {
+    use Route::*;
+    // 1. 본문 읽기 (의존성보다 먼저)
+    let body = match matched.route {
+        CreateCharacter | BakeHints | PixelImage => {
+            Body::Form(form::read_form(ctx.headers, ctx.body).await?)
+        }
+        Preview | EquippedImage | TrialPreview => {
+            Body::Json(form::read_json_body(ctx.headers, &ctx.body)?)
+        }
+        BakeItem => Body::None,
+    };
+    // 2. 라우터 의존성 : X-Requested-With
+    auth::require_requested_with(ctx.method, ctx.headers)?;
+    // 3. 경로 의존성 : 회원·관리자
+    match matched.route {
+        CreateCharacter | Preview | EquippedImage => {
+            auth::require_member(ctx.backend, ctx.headers).await?
+        }
+        BakeHints | PixelImage | TrialPreview | BakeItem => {
+            auth::require_admin(ctx.backend, ctx.headers).await?
+        }
+    };
+    // 4. 경로·본문 값 검증
+    let param = matched.param.as_deref();
+    match (matched.route, &body) {
+        (CreateCharacter, Body::Form(form)) => {
+            let photo = form.file("photo");
+            let pet_sn = form.text("petSn").and_then(pyval::pydantic_int_str);
+            photo.zip(pet_sn).ok_or(ApiError::Validation)?;
+        }
+        (Preview | EquippedImage, Body::Json(json)) => {
+            path_int(param)?;
+            preview_request(json).ok_or(ApiError::Validation)?;
+        }
+        (BakeHints | PixelImage, Body::Form(form)) => {
+            let image = form.file("image");
+            let regn_cd = form.text("regnCd");
+            let item_nm = form
+                .text("itemNm")
+                .filter(|n| (1..=ITEM_NM_MAX).contains(&pyval::py_len(n)));
+            (image.is_some() && regn_cd.is_some() && item_nm.is_some())
+                .then_some(())
+                .ok_or(ApiError::Validation)?;
+        }
+        (TrialPreview, Body::Json(json)) => {
+            trial_request(json).ok_or(ApiError::Validation)?;
+        }
+        (BakeItem, Body::None) => {
+            path_int(param)?;
+        }
+        _ => unreachable!("경로마다 본문 종류가 정해져 있음"),
+    }
+    // 5. 핸들러 : M4에서 옮긴다
+    Err(AppError::new("NOT_IMPLEMENTED", 501, "러스트로 옮기는 중입니다.").into())
+}
+
+fn path_int(param: Option<&str>) -> Result<i64, ApiError> {
+    param
+        .and_then(pyval::pydantic_int_str)
+        .ok_or(ApiError::Validation)
+}
+
+/// alias(camelCase)를 먼저, 없으면 필드 이름(populate_by_name)
+fn field<'a>(map: &'a Map<String, Value>, alias: &str, name: &str) -> Option<&'a Value> {
+    map.get(alias).or_else(|| map.get(name))
+}
+
+/// CharacterPreviewRequest : item_sns: list[int]
+pub fn preview_request(body: &JsonBody) -> Option<Vec<i64>> {
+    let map = body.object()?;
+    let Value::Array(items) = field(map, "itemSns", "item_sns")? else {
+        return None;
+    };
+    items.iter().map(pyval::pydantic_int).collect()
+}
+
+/// ItemTrialRequest : pixel_char_sn: int, regn_cd: str, bake_hint: str(1..=300)
+pub fn trial_request(body: &JsonBody) -> Option<(i64, String, String)> {
+    let map = body.object()?;
+    let pixel_char_sn = pyval::pydantic_int(field(map, "pixelCharSn", "pixel_char_sn")?)?;
+    let regn_cd = pyval::pydantic_str(field(map, "regnCd", "regn_cd")?)?;
+    let bake_hint = pyval::pydantic_str(field(map, "bakeHint", "bake_hint")?)?;
+    if !(1..=BAKE_HINT_INPUT_MAX).contains(&pyval::py_len(bake_hint)) {
+        return None;
+    }
+    Some((pixel_char_sn, regn_cd.to_owned(), bake_hint.to_owned()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn match_path_routes() {
+        assert_eq!(
+            match_path("/ai/characters").unwrap().route,
+            Route::CreateCharacter
+        );
+        let m = match_path("/ai/characters/12/preview").unwrap();
+        assert_eq!((m.route, m.param.as_deref()), (Route::Preview, Some("12")));
+        assert_eq!(
+            match_path("/ai/items/bake-hints").unwrap().route,
+            Route::BakeHints
+        );
+        assert_eq!(
+            match_path("/ai/items/x/bake").unwrap().route,
+            Route::BakeItem
+        );
+        assert!(match_path("/ai/characters/").is_none());
+        assert!(match_path("/ai/characters//preview").is_none());
+        assert!(match_path("/ai/items").is_none());
+    }
+
+    #[test]
+    fn preview_request_rules() {
+        let body = |v: Value| JsonBody::Json(v);
+        assert_eq!(
+            preview_request(&body(json!({"itemSns": [1, "2", 3.0, true]}))),
+            Some(vec![1, 2, 3, 1])
+        );
+        assert_eq!(
+            preview_request(&body(json!({"item_sns": []}))),
+            Some(vec![])
+        );
+        assert_eq!(
+            preview_request(&body(json!({"itemSns": [1], "item_sns": [2]}))),
+            Some(vec![1])
+        );
+        assert_eq!(preview_request(&body(json!({"itemSns": "1"}))), None);
+        assert_eq!(preview_request(&body(json!([1]))), None);
+        assert_eq!(preview_request(&JsonBody::Raw), None);
+        assert_eq!(preview_request(&JsonBody::Undefined), None);
+    }
+
+    #[test]
+    fn trial_request_rules() {
+        let ok = json!({"pixelCharSn": 1, "regnCd": "H", "bakeHint": "가".repeat(300)});
+        assert!(trial_request(&JsonBody::Json(ok)).is_some());
+        let long = json!({"pixelCharSn": 1, "regnCd": "H", "bakeHint": "가".repeat(301)});
+        assert!(trial_request(&JsonBody::Json(long)).is_none());
+        let number = json!({"pixelCharSn": 1, "regnCd": 1, "bakeHint": "a"});
+        assert!(trial_request(&JsonBody::Json(number)).is_none());
+        let empty = json!({"pixelCharSn": 1, "regnCd": "H", "bakeHint": ""});
+        assert!(trial_request(&JsonBody::Json(empty)).is_none());
+    }
+}
