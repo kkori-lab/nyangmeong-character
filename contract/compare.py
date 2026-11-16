@@ -176,23 +176,27 @@ def normalize(body: bytes):
     return {"json": data, "raw": re.sub(rb'"timestamp": ?"[^"]*"', b'"timestamp":"<ts>"', body)}
 
 
-def main() -> int:
-    python = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:18000"
-    rust = sys.argv[2] if len(sys.argv) > 2 else "http://127.0.0.1:18100"
+def main(python: str, rust: str, verbose: bool = False) -> int:
     failed = 0
     for c in CASES:
         a, b = send(python, c), send(rust, c)
         if a == b:
-            print(f"같음  {a['status']}  {c['name']}")
+            if verbose:
+                print(f"같음  {a['status']}  {c['name']}")
             continue
         failed += 1
         print(f"다름  {c['name']}")
         for key in ("status", "headers", "set-cookie", "body"):
             if a[key] != b[key]:
-                print(f"   {key}\n     Python: {a[key]!r}\n     러스트: {b[key]!r}")
-    print(f"\n{len(CASES) - failed}/{len(CASES)} 같음")
+                print(f"   {key}")
+                print(f"     Python: {a[key]!r}")
+                print(f"     러스트: {b[key]!r}")
+    print(f"{len(CASES) - failed}/{len(CASES)} 같음")
     return 1 if failed else 0
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    # 서버를 직접 띄웠을 때 : python contract/compare.py [Python 주소] [러스트 주소]
+    python = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:18000"
+    rust = sys.argv[2] if len(sys.argv) > 2 else "http://127.0.0.1:18100"
+    sys.exit(main(python, rust, verbose=True))
