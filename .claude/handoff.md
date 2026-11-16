@@ -41,7 +41,7 @@
 - 네트워크(M1 끝, 2026-11-16): 사설 IP 1번 `10.0.0.41`, 2번 `10.0.0.170`. 보안 목록 수신 규칙 `10.0.0.41/32 → TCP 8100`, `10.0.0.170/32 → TCP 8080`. 1번 firewalld rich rule(`10.0.0.170/32` → 8080). 2번 iptables INPUT 5번 줄(`-s 10.0.0.41 --dport 8100 ACCEPT`, REJECT 앞) 저장됨. 확인: 1번→2번 `/health` 200, 외부→2번 8100 시간 초과, 2번→1번 `/internal/auth/check` 401, 2번→OpenAI 응답
 - 2번 SSH 키: 맥 키, 학원 PC 키(PuTTYgen, MobaXterm 접속), Actions 배포 키. 새 키는 이미 들어간 기기로 접속해 `~/.ssh/authorized_keys`에 공개키 한 줄을 `>>`로 덧붙인다(PuTTYgen 위쪽 칸 전체 — 칸에서 여러 줄로 접혀 보여도 한 줄. 일부만 복사하면 `Server refused our key`)
 - Actions 배포 키(`KSMARTDEV`): Go SSH 라이브러리라 `-----BEGIN ... PRIVATE KEY-----` 형식만 읽는다. PuTTYgen 키는 **Conversions → Export OpenSSH key**로 내보낸 파일 전체를 넣는다. `.ppk`·`---- BEGIN SSH2 PUBLIC KEY ----`(Save public key)를 넣으면 `ssh.ParsePrivateKey: ssh: no key found`
-- 코드: axum 0.8 + tokio, `GET /health` → `ok`, 포트는 환경변수 `PORT`(기본 8100, 이 저장소에서 정한 값), `0.0.0.0` 바인드. 맥·학원 PC(Windows, rustup + VS Build Tools 2022)에서 `cargo build`·`clippy -D warnings`·`fmt --check`·`curl` 200 확인
+- 코드: axum 0.8 + tokio + reqwest 0.13(TLS 없음 — OpenAI 호출 전 M4에서 rustls 추가), `GET /health` → `{"status":"ok"}`(Python과 같음), 포트는 환경변수 `PORT`(기본 8100, 이 저장소에서 정한 값), `0.0.0.0` 바인드. 맥·학원 PC(Windows, rustup + VS Build Tools 2022)에서 `cargo build`·`clippy -D warnings`·`fmt --check`·`curl` 200 확인
 - 크로스 컴파일(맥): `brew install zig`, `cargo install cargo-zigbuild`, `rustup target add x86_64-unknown-linux-gnu` 후 `cargo zigbuild --release --target x86_64-unknown-linux-gnu.2.39`(서버 glibc 2.39). 배포는 Actions가 하므로 확인용
 - 배포(GitHub Actions, `nyangmeong-ai`와 같은 구성): `build.yml`(develop PR → fmt·clippy·test·build), `main.yml`(main PR 머지 또는 수동 실행 → 러너 `ubuntu-24.04`에서 빌드 → 2번에 실행 파일 scp → `deploy/install.sh`가 `/opt/nyangmeong-character`에 설치, systemd `nyangmeong-character`(계정 `nmchar`) 재시작, `/health` 200 확인), `pr-notify.yml`(AI와 같은 파일). 시크릿 이름은 AI와 같고 값은 2번 기준: `OCI_HOST`·`OCI_USER`(ubuntu)·`OCI_PORT`(22)·`KSMARTDEV`(2번 배포 전용 키)·`ENV_FILE`(M4부터, `/etc/nyangmeong-character.env`로 덮어씀)·`DISCORD_WEBHOOK_URL`. 배포 위치는 AI(`/home/<계정>/ai-backend`)와 다르게 `/opt` — 실행 파일만 두고 `ProtectHome=true`를 쓰려고(2026-11-16, 나중에 맞출 수 있음)
 - 학원 PC 크로스 컴파일: zig(winget `zig.zig`)·`cargo install --locked cargo-zigbuild`·`rustup target add x86_64-unknown-linux-gnu` 후 맥과 같은 명령. 배포는 Actions가 하므로 확인용
@@ -49,16 +49,33 @@
 
 ## 다음에 할 것 (순서대로)
 
-### M2 공통 계약 (다음)
+### M2 공통 계약 (끝, 2026-11-16)
 
-1. `nyangmeong-ai` `docs/api/character.md`·`docs/api/internal.md`와 `app/core/response.py`·`auth.py`·`backend.py`·`image.py`를 읽고 러스트 쪽 모양을 정한다
-2. `ApiResponse`(성공·오류, null 필드 제외), `X-Requested-With` 검사, 업로드 10MB 검증
-3. Java 인증 확인 클라이언트(`GET /internal/auth/check`, 쿠키 전달, 401·403 본문·`Set-Cookie` 그대로, 연결 실패·5xx는 502), 관리자 판정
-4. 확인: 같은 요청(쿠키 없음, 회원, 관리자, `X-Requested-With` 없음)을 Python과 러스트에 보내 상태 코드·본문·`Set-Cookie` 비교
+원칙: Python 코드를 그대로 옮긴다. 기준은 `nyangmeong-ai` develop(= 로컬 LJS) 코드와 FastAPI 0.161.1·Starlette 1.9.0·pydantic 2.14.1 동작(가상환경 소스·직접 실행으로 확인).
+
+| 러스트 | Python 원본 | 내용 |
+|---|---|---|
+| `src/response.rs` | `core/response.py` | ApiResponse 키 순서, None 칸 제외, `timestamp`는 `datetime.now().isoformat()` 모양(KST 고정 +9, 마이크로초 0이면 소수부 없음) |
+| `src/error.rs` | `core/errors.py` + FastAPI 기본 | AppError, Java 4xx 그대로(`path`만 요청 경로로, `json.dumps` 모양 `", "`·`": "`로 다시 씀, text/*에 charset 붙임), 검증 400, `{"detail"}` 404·405·본문 파싱 400, 500 |
+| `src/backend.rs` | `core/backend.py` | Java 호출: 4xx 전달, 그 외 502, 리다이렉트 안 따라감, 쿠키 저장 안 함, 연결·읽기 제한 시간 3초, 실패 로그(경로 숫자 `{n}`) |
+| `src/auth.rs` | `core/auth.py` | `X-Requested-With`, `/internal/auth/check`(200만 통과, 401·403 전달, 그 밖 502), `int(mbrSn)` 내장 `int()` 규칙, 관리자 `USRC0005` |
+| `src/image.rs` | `core/image.py` | 10MB, 확장자 + 시그니처 |
+| `src/form.rs`·`src/pyval.rs` | Starlette `request.form()`·`json()`, pydantic lax | 폼 마지막 값, 빈 폼 값 = 없음, multipart 오류 문구, JSON 형식 판정, pydantic `int`(`"1.0"`·`"1_0"`·bool 허용, `"1."`·`"1e3"` 거절) |
+| `src/character.rs`·`src/app.rs` | `character/router.py`, Starlette 라우터 | 경로 7개 + `/health`(`{"status":"ok"}`), 순서: 본문 읽기 → XRW → 인증 → 값 검증 → 핸들러(지금 501), 404·405(`Allow`)·끝 `/` 307 |
+
+확인: `contract/` 대조 테스트 47/47 같음(가짜 Java, 로컬). 단위 테스트 24개. 방법은 `contract/README.md`.
+
+알려진 차이(실사용에서 거의 안 남): 정수는 i64까지(Python은 무제한 → Java가 4xx), `json.loads`의 UTF-16·NaN·Infinity 미지원, multipart 비정상 본문 세부(multer와 python-multipart), 쓰기 제한 시간 없음(reqwest), 로그는 날짜별 파일 대신 journald, 307 Location의 scheme은 `X-Forwarded-Proto`(없으면 http).
+
+### M3 이미지 계산 (다음)
+
+1. 정답 파일 모으기: M0 측정용 캐릭터의 맨몸 시트·착용 시트를 Java에서 받는다(저장소에 커밋하지 않음)
+2. `engine.py`·`bake.py`·`compose.py`·`canvas.py`를 읽고 함수 단위로 옮긴다. `stand_front_cut`(`_load`·`_fill_holes`·`_defringe`·`_crop`)부터
+3. Python 결과와 픽셀 단위 비교 테스트 → 실행 시간·최대 메모리 비교
 
 M1 때 쓴 방법(다시 필요할 때): 서버 간 포트는 OCI 보안 목록(서브넷 → 보안 → 수신 규칙, 소스 `/32`) + 서버 방화벽(1번 `firewall-cmd` rich rule, 2번 `iptables -I INPUT <REJECT 줄 번호>` 후 `netfilter-persistent save`) 두 겹 다 연다. 시간 초과면 보안 목록(패킷이 2번에 안 옴, `iptables -L -n -v` 카운터 0), 즉시 거절이면 서버 방화벽. 임시 서버는 `python3 -m http.server 8100 --directory /tmp/empty`(홈 폴더 노출 방지)
 
-### 이전 중 1번 임시 대책 (선택, 팀과 결정)
+### 이전 중 1번 임시 대책 (2026-11-16 결정: 하지 않음, `BAKE_CONCURRENCY = 13` 유지)
 
 이전은 오래 걸린다. 그동안 Python `BAKE_CONCURRENCY`를 낮추거나 계산(`bake_source`·`validate`)만 세마포어로 1~2개씩 돌리면 1번 스왑이 줄 것으로 본다. 바꾸면 `m0.sh character`로 다시 잰다.
 
@@ -68,13 +85,15 @@ M1 때 쓴 방법(다시 필요할 때): 서버 간 포트는 OCI 보안 목록(
 |---|---|---|---|
 | M0 | 기준 측정: 1번에서 캐릭터 생성·아이템 등록 | `character` 숫자(위 "왜") + `item-image`·`item-bake`(선택) | `character` 끝 |
 | M1 | 네트워크: 1번→2번 8100, 2번→1번 8080, 2번→OpenAI, `GET /health` | 1번→2번 `/health` 200, 외부→2번 8100 시간 초과, 2번→1번 8080 응답, 2번→OpenAI 응답 | 끝 (2026-11-16, Actions 배포 후 1번→2번 `/health` 200, 외부 시간 초과) |
-| M2 | 공통 계약: `ApiResponse`, `X-Requested-With`, Java 인증 확인과 오류(본문·`Set-Cookie`) 그대로 전달, 업로드 검증 | 같은 요청을 Python과 러스트에 보내 상태 코드·본문·`Set-Cookie`가 같음 | 대기 |
+| M2 | 공통 계약: `ApiResponse`, `X-Requested-With`, Java 인증 확인과 오류(본문·`Set-Cookie`) 그대로 전달, 업로드 검증 | 같은 요청을 Python과 러스트에 보내 상태 코드·본문·`Set-Cookie`가 같음 | 끝 (2026-11-16, `contract/` 47/47, 핸들러 본문은 M4) |
 | M3 | 이미지 계산: `stand_front_cut`(`_load`·`_defringe`·`_crop`)·`place`·`bake_source`·`validate`·`render`·`cut_item` | Python 결과 PNG(정답 파일)와 픽셀 단위로 같음, 실행 시간·최대 메모리 비교 숫자 | 대기 |
 | M4 | 외부 연결과 큐: OpenAI 클라이언트, Java 내부 API 클라이언트, 굽기 큐(동시 수 둘로 제한, 미리보기 우선, 재시도), 7개 경로 | 2번에 직접 요청해 캐릭터 1마리 생성 → 전체 굽기 끝, 2번 swap·메모리 숫자 | 대기 |
 | M5 | 전환: nginx 분기, Python `app/character/` 제거 | 사이트에서 캐릭터 생성·아이템 등록·전체 굽기 정상, 1번 `m0.sh character`에서 스왑 없음 | 대기 |
 
 ## 지뢰
 
+- 2번 서비스는 `BACKEND_BASE_URL`이 비면 `/ai/**`를 전부 502로 답한다(Python과 같음). 경로를 쓰기 전에 시크릿 `ENV_FILE`에 `BACKEND_BASE_URL=http://10.0.0.41:8080`을 넣고 다시 배포한다
+- 대조 테스트(`contract/`)는 FastAPI·Starlette·pydantic 버전에 묶여 있다. `nyangmeong-ai` 의존성이 바뀌면 다시 돌린다
 - 굽기 큐는 프로세스 메모리에 있다. 7개 경로는 nginx에서 한 번에 넘긴다. 전환 전 Python에서 돌던 굽기가 끝났는지 확인하고 넘긴다
 - OpenAI 키는 2번에만 둔다. 저장소·로그에 남기지 않는다(공개 저장소). systemd `EnvironmentFile`(권한 600)로 넣는다
 - 2번 8100에는 인증 없이 들어오는 길이 없어야 한다: nginx(1번 사설 IP)만 닿게 보안 목록 + iptables 둘 다. 인증 확인은 러스트가 매 요청 Java에 묻는다(캐시 없음)
