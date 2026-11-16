@@ -17,11 +17,12 @@
 - 완료 조건: 명령: `sh scripts/check.sh`(대조 47/47 같음)
 - 연결 남음: 경로 7개 핸들러 본문 (M4, LJS)
 
-## M3 이미지 계산 (stand_front_cut·place·bake_source·validate·render·cut_item) — 대기
+## M3 이미지 계산 (stand_front_cut·place·bake_source·validate·render·cut_item) — 끝
 - 기능: `engine.stand_front_cut`(`_load`·`_fill_holes`·`_defringe`·`_crop`)·`stand_front`, `canvas.place`·`find_eyes`, `bake.bake_source`·`validate`·`layer_base`·`worn_sprite`·`item_layer`, `compose.render`, `engine.cut_item`·`normalize_photo`·`normalize_item_image`
 - 원본: `app/character/engine.py`·`canvas.py`·`bake.py`·`compose.py`
-- 기다리는 것: 정답 파일(M0 측정용 캐릭터의 맨몸 시트·착용 시트, Java에서 받기. 커밋하지 않음)
 - 완료 조건: 명령: `cargo test`에서 Python 결과 PNG와 픽셀 단위 같음. 실행 시간·최대 메모리 비교 숫자
+- 결과: 합성 시트·아이템·사진·scipy 정답과 이 PC의 실제 시트 비교가 모두 같음. 측정 표는 `handoff/LJS.md`
+- 연결 남음: 2번 서버 최대 메모리(`Maximum resident set size`) 측정 (Actions `build`의 `image_bench` 산출물, LJS)
 
 ## M4 외부 연결과 큐 (OpenAI·Java 내부 API·굽기 큐·경로 7개) — 대기
 - 기능: OpenAI 클라이언트(rustls 추가), Java 내부 API 클라이언트, 굽기 큐(OpenAI 대기·큰 계산 동시 수 따로 제한, 미리보기 우선, 재시도), 경로 7개 핸들러 본문

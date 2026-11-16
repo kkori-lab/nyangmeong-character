@@ -65,6 +65,9 @@
 - 쓰기 제한 시간 없음(reqwest는 연결·읽기만)
 - 로그는 날짜별 파일 대신 journald
 - 307 Location의 scheme은 `X-Forwarded-Proto`(없으면 http)
+- 이미지 PNG의 바이트(압축)는 Pillow(`optimize=True`)와 다르고 디코드한 화소는 같다. 색 형식(RGB·RGBA)은 같다
+- `normalize_photo`·`normalize_item_image`: PNG(8비트·팔레트·회색·RGBA·EXIF 방향)는 Pillow와 화소까지 같다. JPEG·손실 WebP는 디코더(Pillow는 libjpeg-turbo·libwebp, 여기는 zune-jpeg·image-webp)가 달라 화소가 조금 다르다(크기·방향은 같음). 손실 없는 WebP는 같다. 사진 방향은 EXIF 청크만 읽는다(Pillow는 없으면 PNG `Raw profile type exif` 텍스트 청크와 XMP `tiff:Orientation`도 본다 → 거기에만 방향이 적힌 사진은 누운 채로 남는다). 결과는 OpenAI 입력으로만 쓴다
+- 16비트 PNG는 Pillow와 같다(RGB·RGBA·회색+알파는 위 바이트, 회색은 255로 자름). CMYK JPEG·애니메이션 등 드문 형식은 비교하지 않았다
 
 ## 서버·네트워크·배포
 
