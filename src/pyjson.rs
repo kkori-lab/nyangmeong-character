@@ -12,8 +12,12 @@ pub fn loads(body: &[u8]) -> Option<Value> {
     serde_json::from_str(text).ok()
 }
 
-/// `json.loads(str)` 중 `NaN`·`Infinity`·`-Infinity`(Python만 받는 상수)도 받는 읽기.
-/// 상수는 `null`로 바꿔 읽는다 : 실수 값은 쓰지 않고 문자열 칸만 보는 곳에서만 쓴다
+/// `int()` 자릿수 제한(Python 3.11+ `sys.int_info.default_max_str_digits`) : 넘으면 `json.loads`가 `ValueError`
+const MAX_INT_DIGITS: usize = 4300;
+
+/// `json.loads(str)` 중 Python만 받는 것도 받는 읽기 : `NaN`·`Infinity`·`-Infinity` 상수,
+/// f64를 넘치는 숫자(`1e400`은 `inf`), 4300자리까지의 정수. 4300자리를 넘는 정수는 Python처럼 거절(None).
+/// 상수·넘치는 숫자는 `null`로, 실수는 f64로 다시 써서 읽는다 : 숫자 값은 쓰지 않고 문자열 칸만 보는 곳에서만 쓴다
 pub fn loads_str_lenient(text: &str) -> Option<Value> {
     let mut out = String::with_capacity(text.len());
     let mut in_string = false;
@@ -37,11 +41,66 @@ pub fn loads_str_lenient(text: &str) -> Option<Value> {
             out.push_str("null");
             rest = &rest[constant.len()..];
             continue;
+        } else if c == '-' || c.is_ascii_digit() {
+            let len = number_len(rest);
+            if len > 0 {
+                push_number(&mut out, &rest[..len])?;
+                rest = &rest[len..];
+                continue;
+            }
         }
         out.push(c);
         rest = &rest[c.len_utf8()..];
     }
     serde_json::from_str(&out).ok()
+}
+
+/// `json.decoder.NUMBER_RE` `(-?(?:0|[1-9]\d*))(\.\d+)?([eE][-+]?\d+)?`가 맨 앞에서 맞는 바이트 수 (맞지 않으면 0)
+fn number_len(text: &str) -> usize {
+    let bytes = text.as_bytes();
+    let digits = |from: usize| {
+        bytes[from..]
+            .iter()
+            .take_while(|b| b.is_ascii_digit())
+            .count()
+    };
+    let mut end = usize::from(bytes[0] == b'-');
+    match digits(end) {
+        0 => return 0,
+        _ if bytes[end] == b'0' => end += 1,
+        n => end += n,
+    }
+    if bytes.get(end) == Some(&b'.') && digits(end + 1) > 0 {
+        end += 1 + digits(end + 1);
+    }
+    if matches!(bytes.get(end), Some(b'e' | b'E')) {
+        let sign = usize::from(matches!(bytes.get(end + 1), Some(b'+' | b'-')));
+        if digits(end + 1 + sign) > 0 {
+            end += 1 + sign + digits(end + 1 + sign);
+        }
+    }
+    end
+}
+
+/// 숫자 토큰 하나를 serde가 받는 모양으로 쓴다. 정수가 4300자리를 넘으면 None
+fn push_number(out: &mut String, token: &str) -> Option<()> {
+    let is_float = token.contains(['.', 'e', 'E']);
+    let digits = token.bytes().filter(u8::is_ascii_digit).count();
+    if !is_float {
+        if digits > MAX_INT_DIGITS {
+            return None;
+        }
+        if digits <= 18 {
+            out.push_str(token);
+            return Some(());
+        }
+    }
+    // serde는 f64를 넘치는 수와 아주 큰 지수를 거절하지만 Python은 `inf`·0으로 읽는다
+    match token.parse::<f64>() {
+        Ok(value) if value.is_finite() => out.push_str(&format!("{value:?}")),
+        _ => out.push_str("null"),
+    }
+    Some(())
 }
 
 /// `json.dumps(value, ensure_ascii=False)` : 구분자 `", "`·`": "`, 실수는 `repr` 모양
