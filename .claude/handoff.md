@@ -37,25 +37,26 @@
 ## 지금 상태
 
 - 1번 인스턴스: CentOS Stream 8(2024-05 지원 종료), 방화벽은 `firewalld`(`public` zone, `iptables-persistent` 없음). Java는 `0.0.0.0:8080`에서 받음(2026-11-16 `ss -tlnp` 확인). Python은 uvicorn 워커 자식 프로세스에서 일한다(측정 때 확인)
-- 2번 인스턴스: 생성 완료. 홈 리전(오사카), `VM.Standard.E2.1.Micro`, Ubuntu 24.04 Minimal(x86_64), 부트 볼륨 47GB(Balanced, 백업 없음), 1번과 같은 VCN·서브넷, 임시 공인 IP(SSH 전용, 고정 IP 안 받음). `nano`·`iptables-persistent` 설치. 스왑은 M4 측정 후 결정
-- 2번 SSH 키: 맥에서 만든 키만 등록. 학원 PC로 2번에 들어가려면 학원 PC에서 키를 따로 만들고, 맥으로 2번에 접속해 `~/.ssh/authorized_keys`에 그 공개키 한 줄을 덧붙인다(덮어쓰지 말 것)
-- 코드: `LJS` 브랜치 `cb698b1` — axum 0.8 + tokio, `GET /health` → `ok`, 포트는 환경변수 `PORT`(기본 8100), `0.0.0.0` 바인드. 맥·학원 PC(Windows, rustup + VS Build Tools 2022)에서 `cargo build`·`clippy -D warnings`·`fmt --check`·`curl` 200 확인
-- 크로스 컴파일(맥): `brew install zig`, `cargo install cargo-zigbuild`, `rustup target add x86_64-unknown-linux-gnu` 후 `cargo zigbuild --release --target x86_64-unknown-linux-gnu.2.39`(서버 glibc 2.39). 맥에서 빌드 성공(ELF x86-64, 1.2MB). 서버 실행은 아직 안 함
+- 2번 인스턴스: 홈 리전(오사카), `VM.Standard.E2.1.Micro`, Ubuntu 24.04 Minimal(x86_64), 부트 볼륨 47GB(Balanced, 백업 없음), 1번과 같은 VCN·서브넷, 임시 공인 IP(SSH 전용, 고정 IP 안 받음). `nano`·`iptables-persistent` 설치. 스왑은 M4 측정 후 결정. systemd `nyangmeong-character` 실행 중(2026-11-16 Actions 첫 배포)
+- 네트워크(M1 끝, 2026-11-16): 사설 IP 1번 `10.0.0.41`, 2번 `10.0.0.170`. 보안 목록 수신 규칙 `10.0.0.41/32 → TCP 8100`, `10.0.0.170/32 → TCP 8080`. 1번 firewalld rich rule(`10.0.0.170/32` → 8080). 2번 iptables INPUT 5번 줄(`-s 10.0.0.41 --dport 8100 ACCEPT`, REJECT 앞) 저장됨. 확인: 1번→2번 `/health` 200, 외부→2번 8100 시간 초과, 2번→1번 `/internal/auth/check` 401, 2번→OpenAI 응답
+- 2번 SSH 키: 맥 키, 학원 PC 키(PuTTYgen, MobaXterm 접속), Actions 배포 키. 새 키는 이미 들어간 기기로 접속해 `~/.ssh/authorized_keys`에 공개키 한 줄을 `>>`로 덧붙인다(PuTTYgen 위쪽 칸 전체 — 칸에서 여러 줄로 접혀 보여도 한 줄. 일부만 복사하면 `Server refused our key`)
+- Actions 배포 키(`KSMARTDEV`): Go SSH 라이브러리라 `-----BEGIN ... PRIVATE KEY-----` 형식만 읽는다. PuTTYgen 키는 **Conversions → Export OpenSSH key**로 내보낸 파일 전체를 넣는다. `.ppk`·`---- BEGIN SSH2 PUBLIC KEY ----`(Save public key)를 넣으면 `ssh.ParsePrivateKey: ssh: no key found`
+- 코드: axum 0.8 + tokio, `GET /health` → `ok`, 포트는 환경변수 `PORT`(기본 8100, 이 저장소에서 정한 값), `0.0.0.0` 바인드. 맥·학원 PC(Windows, rustup + VS Build Tools 2022)에서 `cargo build`·`clippy -D warnings`·`fmt --check`·`curl` 200 확인
+- 크로스 컴파일(맥): `brew install zig`, `cargo install cargo-zigbuild`, `rustup target add x86_64-unknown-linux-gnu` 후 `cargo zigbuild --release --target x86_64-unknown-linux-gnu.2.39`(서버 glibc 2.39). 배포는 Actions가 하므로 확인용
 - 배포(GitHub Actions, `nyangmeong-ai`와 같은 구성): `build.yml`(develop PR → fmt·clippy·test·build), `main.yml`(main PR 머지 또는 수동 실행 → 러너 `ubuntu-24.04`에서 빌드 → 2번에 실행 파일 scp → `deploy/install.sh`가 `/opt/nyangmeong-character`에 설치, systemd `nyangmeong-character`(계정 `nmchar`) 재시작, `/health` 200 확인), `pr-notify.yml`(AI와 같은 파일). 시크릿 이름은 AI와 같고 값은 2번 기준: `OCI_HOST`·`OCI_USER`(ubuntu)·`OCI_PORT`(22)·`KSMARTDEV`(2번 배포 전용 키)·`ENV_FILE`(M4부터, `/etc/nyangmeong-character.env`로 덮어씀)·`DISCORD_WEBHOOK_URL`. 배포 위치는 AI(`/home/<계정>/ai-backend`)와 다르게 `/opt` — 실행 파일만 두고 `ProtectHome=true`를 쓰려고(2026-11-16, 나중에 맞출 수 있음)
 - 학원 PC 크로스 컴파일: zig(winget `zig.zig`)·`cargo install --locked cargo-zigbuild`·`rustup target add x86_64-unknown-linux-gnu` 후 맥과 같은 명령. 배포는 Actions가 하므로 확인용
 - 측정 스크립트 `m0.sh <이름>`(1번에서 실행, 결과는 `~/m0-<이름>-<시각>/summary.txt`): vmstat, Python(워커 자손 포함)·Java CPU 초, 프로세스별 RSS 최대, py-spy 비중, 굽기 로그. 저장소에는 아직 없음
 
 ## 다음에 할 것 (순서대로)
 
-### M1 네트워크
+### M2 공통 계약 (다음)
 
-1. (OCI 콘솔) 1번·2번 사설 IP 확인(`10.0.0.x`인지). 보안 목록 수신 규칙 2줄: `<1번 사설 IP>/32` → TCP 8100(nginx→러스트), `<2번 사설 IP>/32` → TCP 8080(러스트→Java). `0.0.0.0/0` 금지 — 서버 간 호출은 키 없이 한다
-2. (1번 SSH, firewalld) `sudo firewall-cmd --permanent --add-rich-rule='rule family="ipv4" source address="<2번 사설 IP>/32" port port="8080" protocol="tcp" accept'` → `sudo firewall-cmd --reload` → `sudo firewall-cmd --list-rich-rules`
-3. (맥) 실행 파일을 2번에 `scp`, 2번에서 `./nyangmeong-character &` 후 `curl -i localhost:8100/health` → 200
-4. (맥, 2번 SSH) iptables에 `-s <1번 사설 IP> -p tcp --dport 8100 -j ACCEPT`를 `REJECT` 줄 앞에 `-I`로 넣고 `sudo netfilter-persistent save`
-5. 확인: 1번에서 `curl -I http://<2번 사설 IP>:8100/health` → 200, 맥에서 `curl --max-time 5 http://<2번 공인 IP>:8100/health` → 시간 초과, 2번에서 `curl -i --max-time 5 http://<1번 사설 IP>:8080/internal/auth/check` → 401(쿠키 없음), 2번에서 `curl -sI https://api.openai.com` → 아무 HTTP 응답(421도 됨, 바깥 나가는 길). 여기까지가 M1 끝
+1. `nyangmeong-ai` `docs/api/character.md`·`docs/api/internal.md`와 `app/core/response.py`·`auth.py`·`backend.py`·`image.py`를 읽고 러스트 쪽 모양을 정한다
+2. `ApiResponse`(성공·오류, null 필드 제외), `X-Requested-With` 검사, 업로드 10MB 검증
+3. Java 인증 확인 클라이언트(`GET /internal/auth/check`, 쿠키 전달, 401·403 본문·`Set-Cookie` 그대로, 연결 실패·5xx는 502), 관리자 판정
+4. 확인: 같은 요청(쿠키 없음, 회원, 관리자, `X-Requested-With` 없음)을 Python과 러스트에 보내 상태 코드·본문·`Set-Cookie` 비교
 
-사설 IP: 1번 `10.0.0.41`, 2번 `10.0.0.170`. 학원 PC는 PuTTYgen 키(`.ppk`)를 2번 `authorized_keys`에 덧붙여 MobaXterm으로 접속한다. 2번에서 연결 확인용 임시 서버를 띄울 때는 홈 폴더가 노출되지 않게 `python3 -m http.server 8100 --directory /tmp/empty`
+M1 때 쓴 방법(다시 필요할 때): 서버 간 포트는 OCI 보안 목록(서브넷 → 보안 → 수신 규칙, 소스 `/32`) + 서버 방화벽(1번 `firewall-cmd` rich rule, 2번 `iptables -I INPUT <REJECT 줄 번호>` 후 `netfilter-persistent save`) 두 겹 다 연다. 시간 초과면 보안 목록(패킷이 2번에 안 옴, `iptables -L -n -v` 카운터 0), 즉시 거절이면 서버 방화벽. 임시 서버는 `python3 -m http.server 8100 --directory /tmp/empty`(홈 폴더 노출 방지)
 
 ### 이전 중 1번 임시 대책 (선택, 팀과 결정)
 
@@ -66,11 +67,11 @@
 | # | 내용 | 완료 조건 | 상태 |
 |---|---|---|---|
 | M0 | 기준 측정: 1번에서 캐릭터 생성·아이템 등록 | `character` 숫자(위 "왜") + `item-image`·`item-bake`(선택) | `character` 끝 |
-| M1 | 네트워크: 1번→2번 8100, 2번→1번 8080, 2번→OpenAI, `GET /health` | 위 M1 확인 5개 통과 | 진행 (2026-11-16 보안 목록·1번 firewalld·2번 iptables 끝: 1번→2번 8100 임시 서버 200, 2번→1번 `/internal/auth/check` 401, 2번→OpenAI 응답. 남음: 2번 8100 외부 차단 확인, 러스트 실행 파일로 `/health`) |
+| M1 | 네트워크: 1번→2번 8100, 2번→1번 8080, 2번→OpenAI, `GET /health` | 1번→2번 `/health` 200, 외부→2번 8100 시간 초과, 2번→1번 8080 응답, 2번→OpenAI 응답 | 끝 (2026-11-16, Actions 배포 후 1번→2번 `/health` 200, 외부 시간 초과) |
 | M2 | 공통 계약: `ApiResponse`, `X-Requested-With`, Java 인증 확인과 오류(본문·`Set-Cookie`) 그대로 전달, 업로드 검증 | 같은 요청을 Python과 러스트에 보내 상태 코드·본문·`Set-Cookie`가 같음 | 대기 |
 | M3 | 이미지 계산: `stand_front_cut`(`_load`·`_defringe`·`_crop`)·`place`·`bake_source`·`validate`·`render`·`cut_item` | Python 결과 PNG(정답 파일)와 픽셀 단위로 같음, 실행 시간·최대 메모리 비교 숫자 | 대기 |
 | M4 | 외부 연결과 큐: OpenAI 클라이언트, Java 내부 API 클라이언트, 굽기 큐(동시 수 둘로 제한, 미리보기 우선, 재시도), 7개 경로 | 2번에 직접 요청해 캐릭터 1마리 생성 → 전체 굽기 끝, 2번 swap·메모리 숫자 | 대기 |
-| M5 | 전환: nginx 분기, systemd 서비스, Python `app/character/` 제거 | 사이트에서 캐릭터 생성·아이템 등록·전체 굽기 정상, 1번 `m0.sh character`에서 스왑 없음 | 대기 |
+| M5 | 전환: nginx 분기, Python `app/character/` 제거 | 사이트에서 캐릭터 생성·아이템 등록·전체 굽기 정상, 1번 `m0.sh character`에서 스왑 없음 | 대기 |
 
 ## 지뢰
 
