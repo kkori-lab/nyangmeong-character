@@ -2,11 +2,12 @@
 
 ## 지금 하는 것
 
-M6 전환 (nginx 분기) — 끝 (검증 1회차 판정 `확인 못 함 있음`: 서버 연결만 남음, 사람 확인 2026-11-17). 2026-11-17 12:02 KST nginx 전환, 사이트 생성·굽기 2번에서 동작. 다음은 M7(`/start M7`)
+M7 로그 파일 (LOG_DIR 날짜별 파일·30일 보관) — 끝 (검증 2회차 판정 `확인 못 함 있음`: 2번 확인만 남음, 사람 확인 2026-11-17). `app.*` 로그를 `LOG_DIR/character_YYYY-MM-DD.log`에도 씀, 2번은 unit이 `/var/log/nyangmeong-character`·`TZ=Asia/Seoul`. 다음은 M8(`/start M8`)
 
 ## 다음에 할 것
 
-- 다음 작업: M7 로그 파일(`/start M7`) — 원본 `app/core/logs.py` `DailyFileHandler`를 옮겨 2번도 백엔드·AI처럼 날짜별 로그 파일 (2026-11-17 요청)
+- 연결 남음: M7 2번 로그 폴더 — 배포 뒤 `ls -ld /var/log/nyangmeong-character; ls -l /var/log/nyangmeong-character`(폴더 `drwxrws---`, 파일 `-rw-rw---- nmchar`), `curl -s http://127.0.0.1:8100/health; tail -n 3 /var/log/nyangmeong-character/character_$(TZ=Asia/Seoul date +%F).log`에 `INFO app.request - GET /health -> 200`, 줄 시각이 한국 시각 (LJS)
+- 다음 작업: M8 개발 환경 설치(`/start M8`) — 백엔드·프론트 `setup.sh` 공통 절 + 러스트 절, DMS MCP 제외 (2026-11-17 요청)
 - 연결 남음: M6 굽기 중 최대 메모리 — 2번에서 `systemctl show nyangmeong-character -p MemoryPeak`·`journalctl -k | grep -i oom` 결과를 `migration.md` "M6 전환 절차" 결과 줄에 (LJS)
 - 연결 남음: M6 아이템 49·51·53 그림 참고 굽기 실패(`BackendError`, Java `GET /internal/ai/items/{n}/bake-image` 또는 아이템 그림 없음 추정) — 백엔드에서 /start
 - 연결 남음: M6 관리자 아이템 등록·전체 굽기 사이트 확인, 1번 `ops/m0.sh character` 스왑 없음 (LJS)

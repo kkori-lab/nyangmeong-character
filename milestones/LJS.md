@@ -47,8 +47,13 @@
 - 연결 남음: 아이템 49·51·53 그림 참고 굽기 `BackendError`(백엔드 `bake-image`·아이템 그림 확인, 백엔드에서 /start)
 - 연결 남음: 관리자 아이템 등록·전체 굽기 사이트 확인, 1번 `ops/m0.sh character` 스왑 없음(LJS)
 - 연결 남음: 팀원 공지(LJS)
-## M7 로그 파일 (LOG_DIR 날짜별 파일·30일 보관) — 대기
+## M7 로그 파일 (LOG_DIR 날짜별 파일·30일 보관) — 끝
 - 기능: `core/logs.py`의 `DailyFileHandler`(`LOG_DIR/<접두사>YYYY-MM-DD.log` 이어 쓰기, 파일 형식 `시각.밀리초 [pid] 레벨 로거 - 메시지`, 파일 0660·폴더 2770)·`remove_old_files`(`KEEP_DAYS = 30`, 이름이 날짜가 아니면 둠)·`_open_folder`·`configure(log_dir)`(`LOG_DIR`이 비면 콘솔만, 파일에는 `app.*` INFO 이상과 서버 기동·오류), `config.py` `log_dir`. 2번 systemd에 로그 폴더(`deploy/nyangmeong-character.service`, `ProtectHome=true` 유지)
 - 원본: `nyangmeong-ai` `app/core/logs.py`·`app/core/config.py`, 백엔드 `logback-spring.xml`(날짜별·30일, 맞춘 기준)
-- 기다리는 것: 시크릿 `ENV_FILE`에 `LOG_DIR` 추가(LJS), 파일 접두사(`ai_`를 그대로 쓸지 `character_`로 할지는 기획 때 질문)
 - 완료 조건: 명령: 원본 `tests/core/test_logs.py` 사례를 러스트 테스트로(날짜 바뀜·오래된 파일 지움·형식), `sh scripts/check.sh` / 화면: 2번에서 `ls -l <LOG_DIR>`에 오늘 날짜 파일, 요청 한 번 뒤 `tail` 에 `app.request` 줄. 2번 시계는 UTC라 파일 날짜 기준(원본 `date.today`는 서버 지역 시각)을 확인
+- 연결 남음: 2번 로그 폴더 확인 (배포 뒤 `ls -l /var/log/nyangmeong-character` 폴더 `drwxrws---`·파일 `-rw-rw----`, `/health` 뒤 `tail`에 `app.request` 줄, 줄 시각이 `TZ=Asia/Seoul date`와 같음, LJS)
+
+## M8 개발 환경 설치 (setup.sh·setup.bat) — 대기
+- 기능: 백엔드·프론트 `setup.sh`처럼 개발 PC 설치를 스크립트 하나로. 공통 절(Git 확인, Claude Code·Codex 감지·없으면 설치, 저장소 git 설정, 커밋 훅 `.githooks`, 이니셜 브랜치)은 백엔드·프론트와 같게, 러스트 절(rustup stable·rustfmt·clippy, `.env.local`과 `.env.local.example` 키 비교, 대조 테스트용 옆 폴더 `nyangmeong-ai`와 `.venv` 확인), 확인 절(`cargo build`, 빈 포트로 띄워 `/health` 뒤 끔). 맥 `bash setup.sh`, Windows `setup.bat`(Git Bash로 `setup.sh` 실행). 이미 있으면 건너뛰고 여러 번 실행 가능, 직접 할 일이 남으면 0이 아닌 코드. DMS MCP는 넣지 않음(2026-11-17 결정)
+- 원본: 백엔드·프론트 저장소 `setup.sh`·`setup.bat`(공통 절), AI 저장소 `setup.sh`·`scripts/doctor.py`(참고). Python 코드를 옮기는 일이 아님
+- 완료 조건: 명령: `sh scripts/check.sh`, `bash -n setup.sh` / 화면: 이 PC(Windows)에서 `setup.bat` 두 번 실행해 두 번째는 전부 `[있음]`, `.env.local` 키를 하나 빼면 할 일로 남고 0이 아닌 코드(맥 확인은 사람)
