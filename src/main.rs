@@ -36,6 +36,8 @@ async fn main() {
     let listener = tokio::net::TcpListener::bind(addr)
         .await
         .expect("failed to bind port");
+    // PORT=0(setup.sh 확인)이면 OS가 고른 실제 포트를 적는다
+    let addr = listener.local_addr().unwrap_or(addr);
     logs::info("app.main", format!("listening on {addr}"));
     axum::serve(listener, app(AppState::new(settings)))
         .await

@@ -4,16 +4,13 @@
 
 ## 처음 한 번
 
-```sh
-# 러스트 (Windows는 Visual Studio C++ Build Tools도 필요)
-rustup default stable
-# 커밋 메시지에서 AI 도구 공동 작성자 줄을 지우는 훅
-git config core.hooksPath .githooks
-# 대조 테스트용 원본 : 옆 폴더에 nyangmeong-ai를 클론하고 그 저장소에서 uv sync
-# (폴더 이름이 ai·nyangmeong-ai가 아니면 AI_REPO=<경로>)
-# 설정
-cp .env.local.example .env.local
-```
+맥은 터미널에서 `bash setup.sh`, Windows는 `setup.bat`(cmd·PowerShell·더블클릭). 여러 번 실행해도 된다.
+
+- 공통(백엔드·프론트와 같음): Git 확인, Claude Code·Codex 감지(둘 다 없으면 Claude Code 설치), 이 저장소의 git 이름·메일, 커밋 훅(`.githooks`), 이니셜 브랜치
+- 러스트: C++ 빌드 도구(Windows), rustup·stable·rustfmt·clippy, `.env.local` 키(디스코드에서 받음, 목록은 `.env.local.example`), 대조 테스트용 옆 폴더 `nyangmeong-ai`와 `.venv`(폴더 이름이 `ai`·`nyangmeong-ai`가 아니면 `AI_REPO=<경로>`)
+- 확인: `cargo build`, 빈 포트로 띄워 `/health`
+
+`[직접]` 줄이 남으면 종료 코드 3이다. 그 일을 하고 다시 실행한다.
 
 ## 실행·검증
 
