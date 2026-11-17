@@ -18,6 +18,7 @@ pub mod ndimage;
 pub mod pil;
 pub mod pyjson;
 pub mod pyval;
+pub mod queue;
 pub mod repository;
 pub mod response;
 pub mod service;

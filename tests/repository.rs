@@ -184,6 +184,7 @@ async fn report_success_sends_image_sheet_and_placement() {
                 origin_x: 10.5,
                 origin_y: 20.0,
             }),
+            None,
         )
         .await
         .unwrap();
@@ -223,6 +224,7 @@ async fn report_success_sends_python_str_of_placement_floats() {
             origin_x: -3.0,
             origin_y: 100.0,
         }),
+        None,
     )
     .await
     .unwrap();
@@ -246,7 +248,9 @@ async fn report_success_sends_python_str_of_placement_floats() {
 #[tokio::test]
 async fn report_success_without_layout_sends_no_placement() {
     let (repo, log) = make_repo(|_| ok(json!({"pixelCharSn": 77}))).await;
-    repo.report_success(9, b"I", b"S", None).await.unwrap();
+    repo.report_success(9, b"I", b"S", None, None)
+        .await
+        .unwrap();
     assert!(
         !log.lock().unwrap()[0]
             .content()
@@ -528,4 +532,124 @@ async fn bake_targets_and_item_image() {
     );
     assert_eq!(log[1].path, "/internal/ai/items/9/bake-image");
     assert!(log.iter().all(|r| r.headers["cookie"] == COOKIE));
+}
+
+// 59ba84f 추가분 : 관리자 무료 재생성(FN-MYP-010-23)과 첫 생성 원본 사진
+// 원본 `test_repository.py`·`test_regenerate.py`의 Java 호출 사례
+
+const PHOTO: &[u8] = b"\x89PNG\r\n\x1a\n0000000000000000";
+
+#[tokio::test]
+async fn report_success_puts_original_in_photo_part_with_file_name() {
+    let (repo, log) = make_repo(|_| ok(json!({"pixelCharSn": 77}))).await;
+
+    repo.report_success(9, b"IMAGE", b"SHEET", None, Some(("dog.PNG", b"ORIGINAL")))
+        .await
+        .unwrap();
+
+    let content = log.lock().unwrap()[0].content();
+    assert!(content.contains("name=\"photo\"; filename=\"dog.PNG\""));
+    assert!(content.contains("Content-Type: image/png"));
+    assert!(content.contains("ORIGINAL"));
+}
+
+#[tokio::test]
+async fn report_success_without_original_sends_no_photo_part() {
+    let (repo, log) = make_repo(|_| ok(json!({"pixelCharSn": 77}))).await;
+
+    repo.report_success(9, b"IMAGE", b"SHEET", None, None)
+        .await
+        .unwrap();
+
+    assert!(!log.lock().unwrap()[0].content().contains("name=\"photo\""));
+}
+
+#[tokio::test]
+async fn regen_start_reads_registration_with_cookie_and_header() {
+    let data =
+        json!({"charCrtJobSn": 5, "petSeCd": "PETC0001", "vrtyNm": "말티즈", "colrNm": null});
+    let (repo, log) = make_repo(move |_| ok(data.clone())).await;
+
+    let job = repo.regen_start(5).await.unwrap();
+
+    assert_eq!(
+        (
+            job.char_crt_job_sn,
+            job.pet_se_cd.as_str(),
+            job.vrty_nm.as_deref(),
+            job.colr_nm.as_deref(),
+            job.chrc_cn.as_deref()
+        ),
+        (5, "PETC0001", Some("말티즈"), None, None)
+    );
+    let log = log.lock().unwrap();
+    assert_eq!(
+        (log[0].method.as_str(), log[0].path.as_str()),
+        ("POST", "/internal/ai/characters/jobs/5/regen-start")
+    );
+    assert_cookie(&log[0]);
+}
+
+#[tokio::test]
+async fn regen_start_passes_4xx_up() {
+    for status in [404, 409] {
+        let (repo, _) =
+            make_repo(move |_| (status, br#"{"code":"ALREADY_PROCESSED"}"#.to_vec())).await;
+
+        let error = repo.regen_start(5).await.unwrap_err();
+
+        assert!(matches!(&error, ApiError::Backend(_)), "{error:?}");
+        assert_eq!(status_of(&error), status);
+    }
+}
+
+#[tokio::test]
+async fn regen_start_with_wrong_shape_is_502() {
+    let (repo, _) = make_repo(|_| ok(json!({"charCrtJobSn": 5}))).await;
+
+    let error = repo.regen_start(5).await.unwrap_err();
+
+    assert_eq!(status_of(&error), 502);
+}
+
+#[tokio::test]
+async fn fetch_original_photo_returns_bytes_as_is() {
+    let (repo, log) = make_repo(|_| (200, PHOTO.to_vec())).await;
+
+    let photo = repo.fetch_original_photo(5).await.unwrap();
+
+    assert_eq!(&photo[..], PHOTO);
+    let log = log.lock().unwrap();
+    assert_eq!(
+        (log[0].method.as_str(), log[0].path.as_str()),
+        ("GET", "/internal/ai/characters/jobs/5/original-photo")
+    );
+    assert_eq!(log[0].headers["cookie"], COOKIE);
+}
+
+#[tokio::test]
+async fn photo_part_type_follows_extension_and_file_name_is_html5_escaped() {
+    use nyangmeong_character::repository::{html5_file_name, photo_type};
+    // `_photo_type` : 확장자만 보고, 모르면 jpeg
+    assert_eq!(photo_type("a.WEBP"), "image/webp");
+    assert_eq!(photo_type("a.png.jpg"), "image/jpeg");
+    assert_eq!(photo_type("png"), "image/png");
+    assert_eq!(photo_type("a."), "image/jpeg");
+    // httpx `_format_form_param` : `"`·제어 문자는 %XX, ESC는 그대로
+    assert_eq!(
+        html5_file_name("a\"b\r\n\u{1b}\t.png"),
+        "a%22b%0D%0A\u{1b}%09.png"
+    );
+    assert_eq!(html5_file_name("강아지\\사진.png"), "강아지\\사진.png");
+
+    // 받는 쪽에서 본 모양
+    let (repo, log) = make_repo(|_| ok(json!({"pixelCharSn": 77}))).await;
+    repo.report_success(9, b"I", b"S", None, Some(("a\"\\b.webp", b"X")))
+        .await
+        .unwrap();
+    let content = log.lock().unwrap()[0].content();
+    assert!(
+        content.contains("filename=\"a%22\\\\b.webp\"\r\nContent-Type: image/webp"),
+        "{content}"
+    );
 }

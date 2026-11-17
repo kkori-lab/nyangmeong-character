@@ -2,6 +2,8 @@
 
 CASES : 핸들러 본문 전(본문 읽기 → X-Requested-With → 인증 → 값 검증)에서 끝나는 요청
 SCENARIOS : 핸들러까지 가는 요청. 사례마다 가짜 Java·가짜 OpenAI의 답을 정해 주고, 두 서버가 그 가짜들에 보낸 요청도 비교한다
+  응답 뒤 작업(생성·굽기)이 있는 사례는 `wait`의 요청이 가짜 Java에 기록되고 기록이 멈출 때까지 기다린 뒤 비교한다.
+  굽기 여러 개가 동시에 도는 사례(`unordered`)는 요청 순서가 매번 달라 기록을 정렬해 비교한다
 비교: 상태 코드, Content-Type·Set-Cookie·Allow·Location, 본문(timestamp는 모양만 확인, PNG는 크기·화소 해시)
 
 사용: python contract/compare.py [Python 주소] [러스트 주소]
@@ -14,6 +16,7 @@ import io
 import json
 import re
 import sys
+import time
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -171,8 +174,11 @@ def drawn(data: bytes) -> dict:
     return {"status": 200, "file_b64": base64.b64encode(data).decode()}
 
 
-def scenario(name, request, java=None, openai=None):
-    return {"name": name, "request": request, "java": java or {}, "openai": openai or {}}
+def scenario(name, request, java=None, openai=None, wait=None, unordered=False):
+    """wait: (경로 정규식, 수) 또는 경로 정규식 : 가짜 Java가 그 요청을 그만큼 받을 때까지 기다림"""
+    if isinstance(wait, str):
+        wait = (wait, 1)
+    return {"name": name, "request": request, "java": java or {}, "openai": openai or {}, "wait": wait, "unordered": unordered}
 
 
 def item_form(path, parts=None, token="admin", filename="hat.png", regn=b"MYPC0001", name="빨간 모자".encode()):
@@ -246,6 +252,201 @@ SCENARIOS = [
     scenario("trial-preview 관리자 아님", trial_request(token="member")),
 ]
 
+JOB = {"charCrtJobSn": 31, "petSeCd": "PETC0001", "vrtyNm": "말티즈", "colrNm": None, "chrcCn": "귀 접힘"}
+JOBS = "/internal/ai/characters/jobs"
+EYES = chat('{"shape": "almond", "color": "brown"}')
+BARE = {"status": 200, "file_b64": b64(FIX / "sheets/plain/bare.png")}
+PHOTO_PNG = fixture("photos/rgb_1300x1000.png")
+PHOTO_WEBP = fixture("photos/webp_lossy_700x500.webp")
+CREATE = "/ai/characters"
+
+
+def route(method, path, **answer):
+    return {"method": method, "path": path} | answer
+
+
+def bake_items(*rows):
+    data = [{"itemSn": sn, "regnCd": regn, "bakeHint": f"item {sn}", "bakeImgRefYn": False} for sn, regn in rows]
+    return route("GET", "/internal/ai/characters/bake-items", data=data)
+
+
+def job_route(**job):
+    return route("POST", JOBS, data=JOB | job)
+
+
+def create_form(token="member", filename="dog.png", photo=PHOTO_PNG, pet_sn=b"3"):
+    return form_case("-", CREATE, token, [("photo", filename, photo), ("petSn", None, pet_sn)])
+
+
+def regenerate(sn="31", token="admin"):
+    return case("-", "POST", f"/ai/admin/characters/jobs/{sn}/regenerate", XRW | cookie(token))
+
+
+def preview(item_sns, kind="preview", sn=1, token="member"):
+    return json_case("-", f"/ai/characters/{sn}/{kind}", token, {"itemSns": item_sns})
+
+
+def bake(item_sn="9", token="admin"):
+    return case("-", "POST", f"/ai/items/{item_sn}/bake", XRW | cookie(token))
+
+
+def baked_sheets(items):
+    """맨몸 50번, 몸통 아이템 5번이 51번 파일로 구워진 캐릭터"""
+    return {
+        "sheets": {"status": 200, "data": SHEETS | {"items": items}},
+        "files": {"50": b64(FIX / "sheets/plain/bare.png"), "51": b64(FIX / "sheets/plain/worn_MYPC0004.png")},
+    }
+
+
+SHOP = bake_items((5, "MYPC0004"), (6, "MYPC0004"), (7, "MYPC0002"))
+BAKED_5 = [{"itemSn": 5, "atchFileSn": 51, "bakeFailed": False}]
+ITEM_SHEET = r"/internal/ai/characters/\d+/item-sheets/\d+"
+WORN_4 = worn("MYPC0004")
+
+SCENARIOS += [
+    # /ai/characters : 202 뒤 생성·보고·굽기
+    scenario(
+        "characters 성공(굽기 대상 없음)",
+        create_form(),
+        java={"routes": [job_route(), bake_items()]},
+        openai={"chat": [EYES], "images": [BARE]},
+        wait=r".*/bake-items",
+    ),
+    scenario(
+        "characters 성공 뒤 아이템 2개 굽기",
+        create_form(),
+        java={"routes": [job_route(), bake_items((5, "MYPC0004"), (6, "MYPC0004"))]},
+        openai={"chat": [EYES], "images": [BARE, WORN_4, WORN_4]},
+        wait=(ITEM_SHEET, 2),
+        unordered=True,
+    ),
+    scenario(
+        "characters 고양이·webp 한글 파일 이름",
+        create_form(filename="고양이 사진.webp", photo=PHOTO_WEBP, pet_sn=b"4"),
+        java={"routes": [job_route(petSeCd="PETC0002", vrtyNm=None, chrcCn='"꼬리" {길다}'), bake_items()]},
+        openai={"chat": [EYES], "images": [BARE]},
+        wait=r".*/bake-items",
+    ),
+    scenario(
+        "characters 눈 못 찾음 -> 규격 실패",
+        create_form(),
+        java={"routes": [job_route()]},
+        openai={"chat": [EYES], "images": [{"status": 200, "file_b64": b64(FIX / "sheets/noeyes/bare.png")}]},
+        wait=r".*/failure",
+    ),
+    scenario(
+        "characters OpenAI 500 두 번 -> 생성 실패",
+        create_form(),
+        java={"routes": [job_route()]},
+        openai={"chat": [EYES], "images": [ERR500, ERR500]},
+        wait=r".*/failure",
+    ),
+    scenario(
+        "characters 눈 판별 실패는 기본값으로 생성",
+        create_form(),
+        java={"routes": [job_route(), bake_items()]},
+        openai={"chat": [{"status": 400}], "images": [BARE]},
+        wait=r".*/bake-items",
+    ),
+    scenario(
+        "characters 성공 보고 Java 500 -> 멈춤",
+        create_form(),
+        java={"routes": [job_route(), route("POST", r".*/success", status=500)]},
+        openai={"chat": [EYES], "images": [BARE]},
+        wait=r".*/success",
+    ),
+    scenario("characters Java 409 그대로", create_form(), java={"routes": [route("POST", JOBS, status=409, code="CHARACTER_ALREADY_EXISTS")]}),
+    scenario("characters 작업 응답 모양 틀림 502", create_form(), java={"routes": [route("POST", JOBS, data={"charCrtJobSn": "x"})]}),
+    scenario("characters PDF 400", create_form(filename="p.pdf", photo=b"%PDF-1.7"), java={"routes": [job_route()]}),
+    scenario("characters 확장자 틀림 400", create_form(filename="p.jpg"), java={"routes": [job_route()]}),
+    # 관리자 무료 재생성
+    scenario(
+        "regenerate 성공",
+        regenerate(),
+        java={"routes": [route("POST", r".*/regen-start", data=JOB), route("GET", r".*/original-photo", file_b64=base64.b64encode(PHOTO_PNG).decode()), bake_items()]},
+        openai={"chat": [EYES], "images": [BARE]},
+        wait=r".*/bake-items",
+    ),
+    scenario("regenerate 시작 409", regenerate(), java={"routes": [route("POST", r".*/regen-start", status=409, code="ALREADY_PROCESSED")]}, wait=r".*/regen-start"),
+    scenario(
+        "regenerate 원본 사진 없음 -> 입력 실패",
+        regenerate(),
+        java={"routes": [route("POST", r".*/regen-start", data=JOB), route("GET", r".*/original-photo", status=404, code="FILE_NOT_FOUND")]},
+        wait=r".*/failure",
+    ),
+    scenario("regenerate 회원은 403", regenerate(token="member")),
+    scenario("regenerate 경로 문자 400", regenerate(sn="abc")),
+    # 미리보기·대표 이미지
+    scenario("preview 맨몸", preview([]), java=baked_sheets([]) | {"routes": [SHOP]}),
+    scenario("preview 구운 아이템", preview([5]), java=baked_sheets(BAKED_5) | {"routes": [SHOP]}, unordered=True),
+    scenario(
+        "preview 안 구운 아이템 409 뒤 굽기",
+        preview([7]),
+        java=baked_sheets([]) | {"routes": [SHOP]},
+        openai={"images": [worn("MYPC0002")]},
+        wait=ITEM_SHEET,
+    ),
+    scenario("preview 굽기 실패 아이템 502", preview([7]), java=baked_sheets([{"itemSn": 7, "atchFileSn": None, "bakeFailed": True}]) | {"routes": [SHOP]}),
+    scenario("preview 같은 부위 두 개 400", preview([5, 6]), java=baked_sheets([]) | {"routes": [SHOP]}),
+    scenario("preview 굽기 대상 아님 400", preview([999]), java=baked_sheets([]) | {"routes": [SHOP]}),
+    scenario("preview 캐릭터 없음 404", preview([]), java={"routes": [SHOP]}),
+    scenario(
+        "preview 구운 시트 깨짐 502",
+        preview([5]),
+        java=baked_sheets(BAKED_5) | {"routes": [SHOP], "files": {"50": b64(FIX / "sheets/plain/bare.png"), "51": base64.b64encode(b"not image").decode()}},
+        unordered=True,
+    ),
+    scenario("equipped 저장", preview([5], "equipped-image"), java=baked_sheets(BAKED_5) | {"routes": [SHOP]}, unordered=True),
+    scenario("equipped 맨몸 저장", preview([], "equipped-image"), java=baked_sheets([]) | {"routes": [SHOP]}),
+    scenario(
+        "equipped Java 409 그대로",
+        preview([5], "equipped-image"),
+        java=baked_sheets(BAKED_5) | {"routes": [SHOP, route("PUT", r".*/equipped-image", status=409, code="EQUIPPED_ITEMS_CHANGED")]},
+        unordered=True,
+    ),
+    scenario(
+        "equipped 안 구운 아이템 409 뒤 굽기",
+        preview([7], "equipped-image"),
+        java=baked_sheets([]) | {"routes": [SHOP]},
+        openai={"images": [worn("MYPC0002")]},
+        wait=ITEM_SHEET,
+    ),
+    # 전체 굽기 한 묶음 (관리자)
+    scenario(
+        "bake 묶음 2개(중복 번호 제거)",
+        bake(),
+        java=baked_sheets([]) | {"routes": [bake_items((9, "MYPC0004")), route("GET", r".*/bake-targets", data={"pixelCharSns": [1, 2, 1], "last": True})]},
+        openai={"images": [WORN_4, WORN_4]},
+        unordered=True,
+    ),
+    scenario(
+        "bake 남은 후보가 있으면 lastYn false",
+        bake(),
+        java=baked_sheets([]) | {"routes": [bake_items((9, "MYPC0004")), route("GET", r".*/bake-targets", data={"pixelCharSns": list(range(1, 15)), "last": True})]},
+        openai={"images": [WORN_4] * 13},
+        unordered=True,
+    ),
+    scenario(
+        "bake 굽기 실패는 실패 표시",
+        bake(),
+        java=baked_sheets([]) | {"routes": [bake_items((9, "MYPC0004")), route("GET", r".*/bake-targets", data={"pixelCharSns": [1], "last": True})]},
+        openai={"images": [ERR500] * 4},
+    ),
+    scenario(
+        "bake 시트 파일 없음은 실패 표시",
+        bake(),
+        java=baked_sheets([]) | {"file_status": {"50": 404}, "routes": [bake_items((9, "MYPC0004")), route("GET", r".*/bake-targets", data={"pixelCharSns": [1, 2], "last": False})]},
+        unordered=True,
+    ),
+    scenario(
+        "bake 하나도 못 줄이면 502",
+        bake(),
+        java={"sheets": {"status": 500}, "routes": [bake_items((9, "MYPC0004")), route("GET", r".*/bake-targets", data={"pixelCharSns": [1], "last": True})]},
+    ),
+    scenario("bake 대상 아닌 아이템 400", bake(), java={"routes": [bake_items((8, "MYPC0004"))]}),
+    scenario("bake 대상 없음", bake(), java={"routes": [bake_items((9, "MYPC0004")), route("GET", r".*/bake-targets", data={"pixelCharSns": [], "last": True})]}),
+]
+
 
 def control(base: str, method: str, path: str, body=None):
     url = urlsplit(base)
@@ -258,13 +459,41 @@ def control(base: str, method: str, path: str, body=None):
     return json.loads(out)
 
 
+WAIT_SEC = 30
+STABLE_SEC = 0.5
+
+
+def settle(fakes: dict, wait) -> None:
+    """응답 뒤 작업 : 기다릴 요청이 기록되고, 그 뒤 기록이 STABLE_SEC 동안 늘지 않을 때까지"""
+    deadline = time.monotonic() + WAIT_SEC
+    if wait:
+        pattern, count = wait
+        while time.monotonic() < deadline:
+            log = control(fakes["java"], "GET", "/__log")
+            if sum(1 for r in log if re.fullmatch(pattern, r["path"])) >= count:
+                break
+            time.sleep(0.1)
+    sizes = None
+    while time.monotonic() < deadline:
+        now = tuple(len(control(fake, "GET", "/__log")) for fake in (fakes["java"], fakes["openai"]))
+        if now == sizes:
+            return
+        sizes = now
+        time.sleep(STABLE_SEC)
+
+
 def run_scenario(base: str, fakes: dict, s: dict) -> dict:
     for fake in fakes.values():
         control(fake, "POST", "/__reset")
     control(fakes["java"], "POST", "/__script", s["java"])
     control(fakes["openai"], "POST", "/__script", s["openai"])
     res = send(base, s["request"])
-    return {"response": res, "java": control(fakes["java"], "GET", "/__log"), "openai": control(fakes["openai"], "GET", "/__log")}
+    if s["wait"]:
+        settle(fakes, s["wait"])
+    logs = {key: control(fakes[key], "GET", "/__log") for key in ("java", "openai")}
+    if s["unordered"]:
+        logs = {key: sorted(log, key=lambda r: json.dumps(r, sort_keys=True, ensure_ascii=False)) for key, log in logs.items()}
+    return {"response": res} | logs
 
 
 COMPARED_HEADERS = ("content-type", "allow", "location")
@@ -272,7 +501,7 @@ COMPARED_HEADERS = ("content-type", "allow", "location")
 
 def send(base: str, c: dict) -> dict:
     url = urlsplit(base)
-    conn = http.client.HTTPConnection(url.hostname, url.port, timeout=10)
+    conn = http.client.HTTPConnection(url.hostname, url.port, timeout=60)
     headers = {"Content-Length": str(len(c["body"]))} | c["headers"]
     conn.putrequest(c["method"], c["path"], skip_host="Host" in headers, skip_accept_encoding=True)
     for key, value in headers.items():
