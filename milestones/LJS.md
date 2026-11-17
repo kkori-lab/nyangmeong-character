@@ -35,9 +35,20 @@
 - 기다리는 것: 시크릿 `ENV_FILE`(`BACKEND_BASE_URL`·`OPENAI_API_KEY`, LJS)
 - 완료 조건: 명령: `sh scripts/check.sh`(큐·회원 경로 대조 추가). 화면: 2번에 직접 요청해 캐릭터 1마리 생성 → 전체 굽기 끝, 2번 swap·메모리 숫자
 - 결과: 대조 119/119, 로컬 실제 Java·OpenAI로 생성·미리보기 사람 확인(2026-11-17)
-- 연결 남음: 2번 확인 (시크릿 `ENV_FILE`에 `BACKEND_BASE_URL`·새 `OPENAI_API_KEY` 입력 후 재배포, LJS)
+- 2번 확인(2026-11-17): 캐릭터 623 생성 → 전체 굽기 101.3초(36개 중 33개 성공), 굽기 뒤 RSS 57MB·available 510MB·재시작 없음. 결과는 `migration.md` "M6 전환 절차" 아래
 
-## M6 전환 (nginx 분기, Python app/character/ 제거) — 대기
-- 기능: 1번 nginx `location /ai/characters`·`/ai/items/` → 2번 8100, `nyangmeong-ai`에서 `app/character/` 제거(그 저장소 PR)
+## M6 전환 (nginx 분기, Python 코드는 남김) — 끝
+- 기능: 1번 nginx `location /ai/characters`·`/ai/admin/characters/`·`/ai/items/` → 2번 8100(사람이 1번에서 직접), Python `app/character/`는 남김(2026-11-17 결정)
 - 기다리는 것: 백엔드·프론트 팀원 공지
 - 완료 조건: 화면: 사이트에서 캐릭터 생성·아이템 등록·전체 굽기 정상, 1번 `ops/m0.sh character`에서 스왑 없음
+
+- 결과: 2026-11-17 12:02 KST nginx 전환, 사이트 생성·굽기·미리보기 2번에서 동작 확인
+- 연결 남음: 굽기 중 최대 메모리 `systemctl show nyangmeong-character -p MemoryPeak`·OOM 없음(2번, LJS)
+- 연결 남음: 아이템 49·51·53 그림 참고 굽기 `BackendError`(백엔드 `bake-image`·아이템 그림 확인, 백엔드에서 /start)
+- 연결 남음: 관리자 아이템 등록·전체 굽기 사이트 확인, 1번 `ops/m0.sh character` 스왑 없음(LJS)
+- 연결 남음: 팀원 공지(LJS)
+## M7 로그 파일 (LOG_DIR 날짜별 파일·30일 보관) — 대기
+- 기능: `core/logs.py`의 `DailyFileHandler`(`LOG_DIR/<접두사>YYYY-MM-DD.log` 이어 쓰기, 파일 형식 `시각.밀리초 [pid] 레벨 로거 - 메시지`, 파일 0660·폴더 2770)·`remove_old_files`(`KEEP_DAYS = 30`, 이름이 날짜가 아니면 둠)·`_open_folder`·`configure(log_dir)`(`LOG_DIR`이 비면 콘솔만, 파일에는 `app.*` INFO 이상과 서버 기동·오류), `config.py` `log_dir`. 2번 systemd에 로그 폴더(`deploy/nyangmeong-character.service`, `ProtectHome=true` 유지)
+- 원본: `nyangmeong-ai` `app/core/logs.py`·`app/core/config.py`, 백엔드 `logback-spring.xml`(날짜별·30일, 맞춘 기준)
+- 기다리는 것: 시크릿 `ENV_FILE`에 `LOG_DIR` 추가(LJS), 파일 접두사(`ai_`를 그대로 쓸지 `character_`로 할지는 기획 때 질문)
+- 완료 조건: 명령: 원본 `tests/core/test_logs.py` 사례를 러스트 테스트로(날짜 바뀜·오래된 파일 지움·형식), `sh scripts/check.sh` / 화면: 2번에서 `ls -l <LOG_DIR>`에 오늘 날짜 파일, 요청 한 번 뒤 `tail` 에 `app.request` 줄. 2번 시계는 UTC라 파일 날짜 기준(원본 `date.today`는 서버 지역 시각)을 확인
