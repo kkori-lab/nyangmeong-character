@@ -2,12 +2,15 @@
 
 ## 지금 하는 것
 
-M7 로그 파일 (LOG_DIR 날짜별 파일·30일 보관) — 끝 (검증 2회차 판정 `확인 못 함 있음`: 2번 확인만 남음, 사람 확인 2026-11-17). `app.*` 로그를 `LOG_DIR/character_YYYY-MM-DD.log`에도 씀, 2번은 unit이 `/var/log/nyangmeong-character`·`TZ=Asia/Seoul`. 다음은 M8(`/start M8`)
+M8 개발 환경 설치 (setup.sh·setup.bat) — 끝 (검증 통과, 사람 확인 2026-11-17). `setup.bat`→Git Bash `setup.sh`: 공통 절은 백엔드 c4987e6 그대로(VS Code·MCP 함수 뺌), 러스트 절(MSVC·rustup·stable·`.env.local` 키·옆 `nyangmeong-ai` .venv), 확인 절(`cargo build`·`PORT=0` `/health`). `OPENAI_BASE_URL`은 키 비교에서 뺌. 다음은 대기 맨 위
 
 ## 다음에 할 것
 
+- 연결 남음: M8 맥 확인 — 맥 터미널에서 `bash setup.sh` → rustup이 없으면 sh.rustup.rs로 설치·`~/.zshrc`에 `~/.cargo/bin` PATH, 끝에 `[완료] 서버 기동`, 두 번째 실행 종료 코드 0. Windows 더블클릭 시 끝에서 창이 멈추는지도 (LJS)
+- 연결 남음: M8 백엔드·프론트 `setup.sh`·`setup.bat` 머리 주석 "고칠 때 둘 다" → "셋 다(캐릭터 포함)" (백엔드·프론트 저장소에서 /start)
+- `.gitattributes`에 `*.bat text eol=crlf` 추가(백엔드와 같게). 지금은 `core.autocrlf=true` PC에서만 CRLF로 받는다. autocrlf가 꺼진 Windows 클론이면 LF .bat가 되어 `goto`·라벨이 어긋날 수 있다(검증 비고)
+- `setup.sh` 공통 절 주석 "그 도구에 MCP를 등록한다"는 이 저장소에서 맞지 않음(백엔드 그대로 옮김). 공통 절을 셋이 같이 고칠 때 정리
 - 연결 남음: M7 2번 로그 폴더 — 배포 뒤 `ls -ld /var/log/nyangmeong-character; ls -l /var/log/nyangmeong-character`(폴더 `drwxrws---`, 파일 `-rw-rw---- nmchar`), `curl -s http://127.0.0.1:8100/health; tail -n 3 /var/log/nyangmeong-character/character_$(TZ=Asia/Seoul date +%F).log`에 `INFO app.request - GET /health -> 200`, 줄 시각이 한국 시각 (LJS)
-- 다음 작업: M8 개발 환경 설치(`/start M8`) — 백엔드·프론트 `setup.sh` 공통 절 + 러스트 절, DMS MCP 제외 (2026-11-17 요청)
 - 연결 남음: M6 굽기 중 최대 메모리 — 2번에서 `systemctl show nyangmeong-character -p MemoryPeak`·`journalctl -k | grep -i oom` 결과를 `migration.md` "M6 전환 절차" 결과 줄에 (LJS)
 - 연결 남음: M6 아이템 49·51·53 그림 참고 굽기 실패(`BackendError`, Java `GET /internal/ai/items/{n}/bake-image` 또는 아이템 그림 없음 추정) — 백엔드에서 /start
 - 연결 남음: M6 관리자 아이템 등록·전체 굽기 사이트 확인, 1번 `ops/m0.sh character` 스왑 없음 (LJS)

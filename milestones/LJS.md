@@ -53,7 +53,9 @@
 - 완료 조건: 명령: 원본 `tests/core/test_logs.py` 사례를 러스트 테스트로(날짜 바뀜·오래된 파일 지움·형식), `sh scripts/check.sh` / 화면: 2번에서 `ls -l <LOG_DIR>`에 오늘 날짜 파일, 요청 한 번 뒤 `tail` 에 `app.request` 줄. 2번 시계는 UTC라 파일 날짜 기준(원본 `date.today`는 서버 지역 시각)을 확인
 - 연결 남음: 2번 로그 폴더 확인 (배포 뒤 `ls -l /var/log/nyangmeong-character` 폴더 `drwxrws---`·파일 `-rw-rw----`, `/health` 뒤 `tail`에 `app.request` 줄, 줄 시각이 `TZ=Asia/Seoul date`와 같음, LJS)
 
-## M8 개발 환경 설치 (setup.sh·setup.bat) — 대기
+## M8 개발 환경 설치 (setup.sh·setup.bat) — 끝
 - 기능: 백엔드·프론트 `setup.sh`처럼 개발 PC 설치를 스크립트 하나로. 공통 절(Git 확인, Claude Code·Codex 감지·없으면 설치, 저장소 git 설정, 커밋 훅 `.githooks`, 이니셜 브랜치)은 백엔드·프론트와 같게, 러스트 절(rustup stable·rustfmt·clippy, `.env.local`과 `.env.local.example` 키 비교, 대조 테스트용 옆 폴더 `nyangmeong-ai`와 `.venv` 확인), 확인 절(`cargo build`, 빈 포트로 띄워 `/health` 뒤 끔). 맥 `bash setup.sh`, Windows `setup.bat`(Git Bash로 `setup.sh` 실행). 이미 있으면 건너뛰고 여러 번 실행 가능, 직접 할 일이 남으면 0이 아닌 코드. DMS MCP는 넣지 않음(2026-11-17 결정)
 - 원본: 백엔드·프론트 저장소 `setup.sh`·`setup.bat`(공통 절), AI 저장소 `setup.sh`·`scripts/doctor.py`(참고). Python 코드를 옮기는 일이 아님
 - 완료 조건: 명령: `sh scripts/check.sh`, `bash -n setup.sh` / 화면: 이 PC(Windows)에서 `setup.bat` 두 번 실행해 두 번째는 전부 `[있음]`, `.env.local` 키를 하나 빼면 할 일로 남고 0이 아닌 코드(맥 확인은 사람)
+- 연결 남음: 맥 `bash setup.sh` 확인 (맥 PC, LJS)
+- 연결 남음: 백엔드·프론트 setup 머리 주석 "셋 다" (백엔드·프론트 저장소에서 /start)
