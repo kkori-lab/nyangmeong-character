@@ -29,11 +29,13 @@
 - 원본: `app/character/engine.py`(프롬프트)·`clients.py`·`repository.py`·`service.py`·`router.py`
 - 완료 조건: 명령: `sh scripts/check.sh`(핸들러까지 가는 대조 추가)
 
-## M5 굽기 큐와 회원 경로 (굽기 큐·회원 경로 4개·2번 확인) — 대기
-- 기능: 굽기 큐(OpenAI 대기 13·큰 계산 동시 수 2 따로 제한, 미리보기 우선, 재시도), `/ai/characters`·preview·equipped-image·`/ai/items/{n}/bake`
-- 원본: `app/character/service.py`·`router.py`
+## M5 굽기 큐와 회원 경로 (굽기 큐·회원 경로 4개·2번 확인) — 끝
+- 기능: 굽기 큐(OpenAI 대기 13·큰 계산 동시 수 2 따로 제한, 미리보기 우선, 재시도), 경로 5개 `/ai/characters`·preview·equipped-image·`/ai/items/{n}/bake`·`/ai/admin/characters/jobs/{n}/regenerate`(59ba84f 무료 재생성)
+- 원본: `app/character/service.py`·`router.py`·`repository.py`(59ba84f 추가분)
 - 기다리는 것: 시크릿 `ENV_FILE`(`BACKEND_BASE_URL`·`OPENAI_API_KEY`, LJS)
 - 완료 조건: 명령: `sh scripts/check.sh`(큐·회원 경로 대조 추가). 화면: 2번에 직접 요청해 캐릭터 1마리 생성 → 전체 굽기 끝, 2번 swap·메모리 숫자
+- 결과: 대조 119/119, 로컬 실제 Java·OpenAI로 생성·미리보기 사람 확인(2026-11-17)
+- 연결 남음: 2번 확인 (시크릿 `ENV_FILE`에 `BACKEND_BASE_URL`·새 `OPENAI_API_KEY` 입력 후 재배포, LJS)
 
 ## M6 전환 (nginx 분기, Python app/character/ 제거) — 대기
 - 기능: 1번 nginx `location /ai/characters`·`/ai/items/` → 2번 8100, `nyangmeong-ai`에서 `app/character/` 제거(그 저장소 PR)

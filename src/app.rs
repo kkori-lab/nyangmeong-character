@@ -1,7 +1,7 @@
 //! `app/main.py` 앱 조립 + Starlette 라우터 동작(404·405·끝 `/` 리다이렉트)
 
 use crate::backend::Backend;
-use crate::character::{self, Ctx};
+use crate::character::{self, AppQueue, Ctx};
 use crate::clients::OpenAiClient;
 use crate::config::Settings;
 use crate::error::{self, ApiError};
@@ -24,6 +24,8 @@ pub struct AppState {
     pub backend: Backend,
     /// OpenAI 키가 없으면 None
     pub client: Option<Arc<OpenAiClient>>,
+    /// 굽기 큐 : 프로세스에 하나
+    pub queue: Arc<AppQueue>,
 }
 
 impl AppState {
@@ -34,6 +36,7 @@ impl AppState {
             client,
             settings: Arc::new(settings),
             backend,
+            queue: Arc::default(),
         }
     }
 }
@@ -102,7 +105,8 @@ async fn dispatch(State(state): State<AppState>, request: Request) -> Response {
     let matched = character::match_path(&path).expect("methods_for에서 확인");
     let ctx = Ctx {
         backend: &state.backend,
-        client: state.client.as_deref(),
+        client: state.client.clone(),
+        queue: &state.queue,
         method: &parts.method,
         headers: &parts.headers,
         body,

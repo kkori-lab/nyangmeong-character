@@ -39,6 +39,8 @@ pub enum CharacterFailure {
     ApiError,
     /// 512×512 규격 밖
     SpecMismatch,
+    /// 재생성 원본 사진을 받지 못함
+    InputError,
 }
 
 impl CharacterFailure {
@@ -46,6 +48,7 @@ impl CharacterFailure {
         match self {
             Self::ApiError => "CHARACTER_API_ERROR",
             Self::SpecMismatch => "CHARACTER_SPEC_MISMATCH",
+            Self::InputError => "CHARACTER_INPUT_ERROR",
         }
     }
 }
@@ -83,12 +86,24 @@ pub trait CharacterJobRepository: Send + Sync {
         pet_sn: i64,
     ) -> impl Future<Output = Result<CharacterJob, ApiError>> + Send;
 
+    fn regen_start(
+        &self,
+        char_crt_job_sn: i64,
+    ) -> impl Future<Output = Result<CharacterJob, ApiError>> + Send;
+
+    fn fetch_original_photo(
+        &self,
+        char_crt_job_sn: i64,
+    ) -> impl Future<Output = Result<Bytes, ApiError>> + Send;
+
+    /// `original`: 첫 생성의 업로드 원본(파일 이름, 바이트)
     fn report_success(
         &self,
         char_crt_job_sn: i64,
         image: &[u8],
         sheet: &[u8],
         layout: Option<Layout>,
+        original: Option<(&str, &[u8])>,
     ) -> impl Future<Output = Result<i64, ApiError>> + Send;
 
     fn report_failure(
@@ -278,6 +293,32 @@ fn png_file(name: &'static str, content: &[u8]) -> Part {
     png_part(content).file_name(name)
 }
 
+/// Java가 확장자와 내용을 맞춰 보므로 Content-Type은 확장자를 따름
+pub fn photo_type(file_name: &str) -> &'static str {
+    // `rpartition(".")[2].lower()` : 점이 없으면 이름 전체
+    let extension = file_name.rsplit('.').next().unwrap_or("").to_lowercase();
+    match extension.as_str() {
+        "png" => "image/png",
+        "webp" => "image/webp",
+        _ => "image/jpeg",
+    }
+}
+
+/// httpx `_format_form_param`의 HTML5 치환 중 reqwest가 다르게 하는 것 : `"`는 `%22`,
+/// 0x1B를 뺀 제어 문자 0x00~0x1F는 `%XX`. `\`는 reqwest도 `\\`로 바꾼다
+pub fn html5_file_name(file_name: &str) -> String {
+    let mut out = String::with_capacity(file_name.len());
+    for c in file_name.chars() {
+        match c {
+            '"' => out.push_str("%22"),
+            '\u{1b}' => out.push(c),
+            c if (c as u32) <= 0x1F => out.push_str(&format!("%{:02X}", c as u32)),
+            c => out.push(c),
+        }
+    }
+    out
+}
+
 #[derive(Clone)]
 pub struct JavaRepository {
     backend: Backend,
@@ -339,14 +380,35 @@ impl CharacterJobRepository for JavaRepository {
         shape(parse_job(&data))
     }
 
+    async fn regen_start(&self, char_crt_job_sn: i64) -> Result<CharacterJob, ApiError> {
+        // FN-MYP-010-23 : 관리자 무료 재생성. 작업을 CREATING으로 바꾸고 등록 정보를 받음
+        // (REGEN 작업·REQUESTED 판정은 Java, 이미 처리 중이면 409 ALREADY_PROCESSED)
+        let data = self
+            .call(
+                Method::POST,
+                &format!("{JOBS_PATH}/{char_crt_job_sn}/regen-start"),
+                DEFAULT_TIMEOUT_SEC,
+                |b| b,
+            )
+            .await?;
+        shape(parse_job(&data))
+    }
+
+    async fn fetch_original_photo(&self, char_crt_job_sn: i64) -> Result<Bytes, ApiError> {
+        self.fetch(&format!("{JOBS_PATH}/{char_crt_job_sn}/original-photo"))
+            .await
+    }
+
     async fn report_success(
         &self,
         char_crt_job_sn: i64,
         image: &[u8],
         sheet: &[u8],
         layout: Option<Layout>,
+        original: Option<(&str, &[u8])>,
     ) -> Result<i64, ApiError> {
         // FN-MYP-010-09·17 : 결과와 합성에 쓸 맨몸 시트·배치값을 함께 저장 요청
+        // FN-MYP-010-23 : 첫 생성은 원본(파일 이름·바이트)도 보내 무료 재생성 입력으로 남김
         let mut form = Form::new();
         if let Some(layout) = layout {
             form = form
@@ -354,9 +416,16 @@ impl CharacterJobRepository for JavaRepository {
                 .text("originX", pyjson::float_repr(layout.origin_x))
                 .text("originY", placement_text(layout.origin_y));
         }
-        let form = form
+        let mut form = form
             .part("image", png_file("image.png", image))
             .part("sheet", png_file("sheet.png", sheet));
+        if let Some((file_name, photo)) = original {
+            let part = Part::bytes(photo.to_vec())
+                .mime_str(photo_type(file_name))
+                .expect("이미지 형식")
+                .file_name(html5_file_name(file_name));
+            form = form.part("photo", part);
+        }
         let data = self
             .call(
                 Method::POST,

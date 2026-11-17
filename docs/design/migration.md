@@ -32,6 +32,7 @@
 | `POST /ai/items/pixel-image` | 관리자 | 실사 → 픽셀 아이템 그림(OpenAI 이미지 + `cut_item`) |
 | `POST /ai/items/trial-preview` | 관리자 | 시험 굽기 1회 + 합성 |
 | `POST /ai/items/{itemSn}/bake` | 관리자 | 안 구운 캐릭터 한 묶음 굽기, 관리자 화면이 `lastYn`까지 반복 |
+| `POST /ai/admin/characters/jobs/{charCrtJobSn}/regenerate` | 관리자 | 무료 재생성(develop 59ba84f에 추가): 202 → Java `regen-start`·`original-photo` → 생성·보고·굽기 |
 
 러스트가 갖출 것(Python 쪽 파일):
 
@@ -86,6 +87,19 @@
 
 대조 테스트(`contract/`)는 Python·러스트가 가짜 Java·가짜 OpenAI에 보낸 요청(경로·필드·프롬프트·그림 화소)까지 비교한다.
 
+## M5에서 옮긴 것 (2026-11-16)
+
+기준: `nyangmeong-ai` develop 59ba84f. 경로 8개가 모두 러스트에 있다(501 없음).
+
+| 러스트 | Python 원본 | 내용 |
+|---|---|---|
+| `src/queue.rs` | `service.py` `BakeQueue`·`_bake_one`·`_draw` | 굽기 큐. 동시 13·시도 2·`put_first`·같은 키 대기자 공유·저장 실패는 다시 안 굽기·시트 파일 없음(`FILE_NOT_FOUND` 404)만 실패 표시. 상태는 잠금 하나, `.await` 동안 안 잡음. 일꾼은 `tokio::spawn`(요청이 끊겨도 굽기는 이어짐) |
+| `src/service.rs` | `service.py` 나머지 | `create_job`·`generate_and_report`·`regenerate_and_report`·`preview`·`save_equipped_image`·`bake_item_batch`, `rules.py` `matches_spec` |
+| `src/repository.rs` | `repository.py` 59ba84f 추가분 | `regen_start`·`fetch_original_photo`, `report_success`의 `photo` 파트(확장자로 Content-Type, 파일 이름은 httpx HTML5 치환과 같게), `CHARACTER_INPUT_ERROR` |
+| `src/character.rs`·`app.rs` | `router.py` | 회원 경로 3개·전체 굽기·무료 재생성 경로. 큐는 `AppState`에 하나 |
+
+테스트: `tests/bake_queue.rs`(원본 `test_bake.py` 큐 사례 + 동시 상한·대기자 공유), `tests/service_member.rs`(원본 create·preview·equipped·regenerate 서비스 사례), `tests/repository.rs` 추가 7개. 대조 119/119 같음(새 사례 34개, 응답 뒤 작업은 가짜 Java 기록이 멈출 때까지 기다린 뒤 비교).
+
 ## 알려진 차이
 
 실사용에서 거의 안 나는 것만 둔다. 새로 생기면 여기에 적는다.
@@ -98,6 +112,10 @@
 - OpenAI 그림 base64는 알파벳 밖 글자를 버리고 읽는다(`b64decode` 비엄격과 같음). 패딩이 모자란 글자는 Python과 달리 오류(둘 다 502라 응답은 같음)
 - `report_success`의 `originY`: `place`가 정수 100을 돌려주는 경우(`min(.., 100)`)를 `Layout.origin_y == 100.0`으로 판별해 `"100"`을 보낸다. 우연히 정확히 100.0인 실수는 Python이 `"100.0"`을 보내지만 여기서는 `"100"`이다(확률 0에 가까움)
 - 큰 이미지 계산은 동시에 2개까지(`HEAVY_CONCURRENCY`). Python은 `asyncio.to_thread` 기본 풀이다. 결과는 같다
+- 응답 뒤 작업(생성·보고·굽기)의 시작 시점: Starlette `BackgroundTasks`는 응답 본문을 다 보낸 뒤 시작하고, 여기는 응답을 돌려주기 직전에 `tokio::spawn`한다. Java 작업 보고가 202 응답보다 먼저 갈 수 있다. 응답과 Java가 받는 요청은 같다(React는 상태를 Java에서 조회)
+- 굽기 큐 일꾼 수: 여기는 잠금 안에서 일꾼 수를 먼저 올려 동시에 굽는 수가 늘 13(`BAKE_CONCURRENCY`) 이하다. Python은 `_work`가 처음 돌 때 수를 올려, 한 틈에 `drain`이 두 번 불리면 상한을 넘는다(검증 에이전트 실측: 작업 20개에 `gather(drain(), drain())` → 동시 20). 굽는 결과·Java 보고는 같고 OpenAI 동시 호출 수만 다르다
+- 굽기 중 패닉: Python은 `_bake_one`의 예외를 `except Exception`으로 받고 같은 일꾼이 다음 작업을 꺼낸다. 여기는 패닉한 일꾼이 끝난다(굽는 중 표시 정리·대기자 알림·일꾼 수 줄이기는 Drop이 함). 남은 작업은 다른 일꾼이나 다음 `drain`이 꺼낸다. 패닉은 코드 결함일 때만 나고(이미지 계산의 패닉은 `heavy`가 오류로 바꿈) 일반 실패는 Python처럼 결과(`None`·실패 표시)로 돌아온다
+- 요청이 끊겼을 때(시험 안 함, hyper·uvicorn 동작에서 추정): axum은 연결이 끊기면 핸들러 future를 버린다. 전체 굽기는 일꾼이 따로 돌아 굽기·Java 보고는 끝까지 가고 응답만 안 간다(uvicorn은 핸들러를 끝까지 돈다). 미리보기·생성 경로는 응답 전에 끊기면 그 뒤 일(작업 생성 등)을 안 한다
 
 - 정수는 i64까지(Python은 무제한 → Java가 4xx)
 - `json.loads`의 UTF-16·NaN·Infinity 미지원

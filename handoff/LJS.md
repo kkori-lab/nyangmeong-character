@@ -2,36 +2,40 @@
 
 ## 지금 하는 것
 
-M4 외부 연결 [A] — 끝 (검증 통과 2회차, 2026-11-16). 다음은 M5(`/start M5`)
-원본 커밋: 59ba84f (e9c3edd 뒤 바뀐 것은 `repository.py`·`router.py`·`service.py`의 관리자 무료 재생성뿐이고 회원·재생성 경로에서만 쓴다 → M5. `engine.py`·`clients.py`는 그대로)
+M5 굽기 큐와 회원 경로 — 끝 (검증 2회차 판정 `확인 못 함 있음`: 2번 확인만 연결 남음, 사람 확인 2026-11-17). 다음은 M6(`/start M6`)
+원본 커밋: 59ba84f (원본 저장소 develop. 로컬 작업 폴더는 LJS `b8e8d98`이라 `git show 59ba84f:<파일>`로 읽는다)
 
-검증 루프 2회차까지 쓰던 기획을 다시 세운다. 1~5는 e302162에서 구현됐고 기준은 그대로다. 6·7이 2회차에서 지적된 원본과의 차이를 다룬다. [B](굽기 큐·회원 경로 4개·2번 확인·M4 문서)는 milestones M5로 옮겼다(`_bake_once`는 trial-preview가 써서 [A]의 `service.rs`에 있다).
+기준은 `app/character/service.py`·`router.py`·`repository.py`(59ba84f). 원본 테스트: `test_bake` 38·`test_create` 15·`test_create_without_generator` 3·`test_preview` 11·`test_equipped_image` 12·`test_regenerate` 14·`test_repository`(59ba84f에서 늘어난 사례). 서비스 수준 사례는 러스트 테스트로, 경로 수준 사례는 대조로 옮긴다.
 
-1. 프롬프트 — `src/engine.rs`, `prompts/`(원본 `app/character/prompts/` 6개, `include_str!`·`include_bytes!`) ← `engine.py:species_of·eye_question·parse_eyes·_pick·_eye_text·_registered_text·build_prompt·build_wear_prompt·item_hint_question·parse_bake_hint·item_pixel_prompt`, `BakeItem`·`BAKE_REGIONS`·`BAKE_HINT_MAX`. Python `str.format`(`{{`), `json.dumps(ensure_ascii=False)`, `str.strip`·`splitlines`(유니코드 공백·줄 구분 문자), `len`(코드 포인트)을 따른다. `\{.*\}`(DOTALL)는 정규식 없이 첫 `{`~마지막 `}`
-   - 명령: 원본 venv로 만든 정답(`contract/gold_prompts.py` → `tests/fixtures/prompts.json`)과 문자열이 같음: 종 2 × 눈 모양 4 × 색 8(없음 포함) × 등록 정보(없음·중괄호·따옴표·이모지·줄바꿈), 부위 6(미등록 포함) × 그림 참고 여부, `parse_eyes`·`parse_bake_hint` 입력 표(빈 답·코드 펜스·JSON 아님·` `·150자 경계)
-2. OpenAI 클라이언트 — `src/clients.rs` ← `clients.py:OpenAICharacterClient`(`render`·`_detect_eyes`·`_draw_sheet`·`_bake`·`_describe_item`·`_draw_item`)·`get_character_client`. reqwest로 `POST /images/edits`(multipart `model`·`prompt`·`image[]` 순서대로·`size`·`quality`·`n`)와 `POST /chat/completions`. SDK와 같게: 제한 시간 180초, `max_retries=1`(연결 오류·시간 초과·408·409·429·5xx만 한 번, `retry-after` 또는 0.5초 지터 대기), 눈 판별 실패는 기본값, 그 밖 실패는 `CharacterApiError`. 키가 비면 생성기 없음
-   - 차이: 주소 `OPENAI_BASE_URL`(기본 `https://api.openai.com/v1`). Python SDK도 같은 환경변수를 읽어 대조에서 둘 다 가짜로 돌린다. `Settings`·`.env.local.example`에 있음
-   - 명령: 대조에서 가짜 OpenAI가 받은 요청(경로·필드·프롬프트·그림 화소·data URI 화소)이 Python과 같음, 500 → 성공(재시도 1회)·400(재시도 없음)·시간 초과 사례
-3. Java 내부 API — `src/repository.rs` ← `repository.py:JavaCharacterJobRepository` e9c3edd의 10개 메서드·`_fetch_sheet`와 응답 모델 6개(59ba84f의 `regen_start`·`fetch_original_photo`·`report_success`의 `original`·`INPUT_ERROR`는 M5). 쿠키·`X-Requested-With` 전달, 파일 15초, 쿼리 `itemSns` 반복(빈 목록이면 안 붙임)·`page=0`, multipart 파일 이름·`image/png`, 폼 `itemSns` 반복, 배치값은 Python `str()` 모양(`pyjson::float_repr`, `place`가 정수 100을 돌려줄 때 `"100"`), `list_bake_items` 중복 번호(첫 자리·마지막 값)·지시와 그림이 다 없는 행 제외, 모양이 틀리면 502. pydantic lax `float`·`bool`·`Literal`·`min_length`는 `src/pyval.rs`
-   - 명령: 원본 `tests/character/test_repository.py` 18개 사례를 옮긴 `tests/repository.rs`(기대값 원본 그대로), 대조에서 가짜 Java가 받은 요청이 같음
-4. 관리자 경로 3개 — `src/character.rs`의 `/ai/items/bake-hints`·`/ai/items/pixel-image`·`/ai/items/trial-preview` ← `router.py` 핸들러, `service.py:describe_item·draw_item·trial_preview·_bake_once·_check_region·_item_image_error·_preview_error`, `rules.py:png_size·matches_spec`. 나머지 4개 경로는 501 그대로(M5). 로그 문구는 원본과 같게(`logger.exception` traceback 대신 오류 한 줄)
-   - 명령: 대조에서 관리자 3개 경로 사례(성공·OpenAI 실패 502·아이템 못 찾음·부위 확인·업로드 오류)의 상태 코드·본문·PNG 화소가 Python과 같음, 원본 `test_item_pixel` 등의 경로 동작 사례
-5. 대조 준비 — `contract/fake_java.py` 캐릭터 내부 API(메모리 상태, 받은 요청 기록·조회·초기화), `contract/fake_openai.py`(합성 시트 `tests/fixtures/image/`, 사례별 실패·답 지정, 기록). `run.py`가 Python용·러스트용 가짜를 따로 띄워 기록 비교. 실제 OpenAI는 안 부름
-6. 눈 판독 JSON 숫자 — `src/pyjson.rs:loads_str_lenient`(`parse_eyes`만 씀) ← Python 3.13 `json.loads` 숫자 처리. 원본 venv로 확인함: `1e400` → `inf`로 읽고 나머지 칸을 씀(러스트는 지금 serde가 거절해 기본 눈값), 4301자리 정수 → `int` 자릿수 제한 `ValueError`로 기본 눈값(러스트는 지금 받음), 4300자리 정수·긴 소수는 받음. 문자열 밖 숫자 토큰을 Python 문법(`-?(0|[1-9][0-9]*)(\.[0-9]+)?([eE][-+]?[0-9]+)?`)으로 읽어 f64가 넘치면 `null`로 바꾸고(값은 안 씀), 소수·지수 없는 정수가 4300자리를 넘으면 `None`
-   - 명령: `contract/gold_prompts.py` `parse_eyes` 입력 표에 `1e400`·`-1e400`·`1e-400`·`1E+400`·4300/4301자리 정수(음수 포함)·4301자리 소수·문자열 안 `1e400`·`01` 추가 → 정답 다시 만들고 같음
-   - 차이(유지): 깊은 중첩. Python은 C 재귀 한도까지 받음(이 PC venv에서 2998, 한도는 플랫폼마다 다름), serde는 128. 깊이를 맞추면 스택 넘침 위험이 있어 맞추지 않는다. `migration.md` 95줄에서 `1e400`을 빼고 측정값을 적는다
-7. 제한 시간 기록 바로잡기 — reqwest 0.13.5 `read_timeout`은 요청을 보낼 때 한 번 맞춘 타이머다(`PendingRequest::poll`, 응답 머리가 올 때까지, 업로드 시간 포함). 그래서 업로드가 멈추면 시간 초과가 나고, SDK처럼 재시도한 뒤 실패한다. `migration.md` 94줄("OpenAI 쓰기 제한 시간 없음… 계속 기다린다")과 105줄("쓰기 제한 시간 없음")은 틀린 기록이다. 테스트로 확인한 뒤 실제 차이로 고친다: "업로드와 응답 대기를 합쳐 180초(Java는 3·15초)를 넘으면 시간 초과. httpx는 읽기·쓰기 한 번마다 잰다"
-   - 명령: 새 통합 테스트(`tests/timeouts.rs`). 받기를 멈추는 TCP 서버에 큰 본문을 보내고 제한을 1초로 두면 `OpenAiClient`는 시간 초과로 재시도 1회 뒤 `SdkError`, 연결 2번, 몇 초 안에 끝남. `backend.rs`도 같은 방식으로 1회 확인한다(재시도 없음). Python 쪽 기대(httpx `WriteTimeout` → `APITimeoutError` → 재시도)는 SDK 소스로 확인해 테스트 주석에 적는다
+1. Java 내부 API 추가분 — `src/repository.rs` ← `repository.py:regen_start·fetch_original_photo·report_success(original)·_photo_type`, `CharacterFailure.INPUT_ERROR`. `report_success`는 첫 생성 때 `photo` 파트(원래 파일 이름, 확장자로 `image/png`·`image/webp`·그 밖 `image/jpeg`)를 `image`·`sheet` 뒤에 붙인다. `original-photo`는 파일 15초
+   - 명령: `tests/repository.rs`에 원본 `test_repository.py` e9c3edd→59ba84f 추가 사례(기대값 원본 그대로), 대조에서 가짜 Java가 받은 multipart 파트 순서·이름·Content-Type이 같음
+2. 굽기 큐 — 새 `src/queue.rs` ← `service.py:BakeTask·BakeQueue(add·put_first·run·drain·_work·_notify)·get_bake_queue·_bake_one·_sheet_file_missing·_mark_bake_failed·_draw`, `BAKE_CONCURRENCY=13`·`BAKE_ATTEMPTS=2`·`BAKE_BATCH`. 상태(대기 deque·굽는 키 집합·일꾼 수·대기자 `oneshot` 목록)는 `std::sync::Mutex` 하나에 두고 `await` 동안 잡지 않는다(Python은 한 스레드라 "확인 후 꺼내기"가 끊기지 않음 → 러스트는 잠금 안에서 한 번에). 큐는 프로세스에 하나(`AppState`), 재시작하면 사라짐(원본과 같음). 큰 계산은 M4의 `heavy`(2개)를 그대로 거친다 → OpenAI 대기 13·계산 2가 따로 제한됨
+   - 차이: 끊긴 요청의 대기자는 Python `future.done()` 확인 대신 `oneshot` 보내기 실패를 무시한다(결과 같음)
+   - 명령: 새 `tests/bake_queue.rs`에 원본 `test_bake.py` 큐 사례(중복 넣기 무시·굽는 중 `put_first` 무시·`put_first`가 앞으로·동시 13 상한·같은 키 대기자가 결과 공유·한 작업 예외가 일꾼을 안 멈춤·시트 없을 때 조회·`FILE_NOT_FOUND` 404만 실패 표시·저장 실패는 다시 안 굽기·2회 시도) — 가짜 생성기·저장소는 `tests/service_admin.rs` 방식
+3. 서비스 — `src/service.rs` ← `service.py:create_job·generate_and_report·_tasks·preview·save_equipped_image·_chosen_items·_render(시트 인자)·ItemBakeResult·bake_item_batch·_report_failure·regenerate_and_report`. 로그 문구 원본과 같게(M4처럼 traceback 대신 오류 한 줄)
+   - 명령: 새 `tests/service_member.rs`에 원본 `test_create`·`test_create_without_generator`·`test_preview`·`test_equipped_image`·`test_bake`(묶음: `last` 계산·하나도 못 줄이면 502·중복 번호 제거·`BAKE_BATCH` 자르기)·`test_regenerate` 서비스 사례
+4. 경로 — `src/character.rs`의 `/ai/characters`(202)·`/{n}/preview`(PNG 또는 409 `ITEM_BAKING`)·`/{n}/equipped-image`·`/ai/items/{n}/bake` 본문, 501 제거, `/ai/admin/characters/jobs/{n}/regenerate` 경로 추가(`require_admin`). `photo.read(MAX_IMAGE_BYTES + 1)`, 응답 모델 `CharacterCreateResponse`·`ItemBakeResponse`(`lastYn`) 키 순서 원본 그대로. 응답 뒤 작업(`generate_and_report`·`queue.drain`)은 `tokio::spawn`
+   - 차이: Starlette `BackgroundTasks`는 응답 본문을 다 보낸 뒤 시작한다. 러스트는 응답을 돌려주기 직전에 띄워 Java 호출이 202보다 먼저 갈 수 있다. 응답·Java가 받는 요청은 같다(React는 상태를 Java에서 조회). `migration.md` "알려진 차이"에 적는다
+   - 명령: 대조에서 새 경로 사례(성공·생성기 없음 502·업로드 오류·Java 4xx 전달·규격 밖 실패 보고·OpenAI 실패 보고·미리보기 409 뒤 굽기·굽기 실패 아이템 502·한 부위 두 아이템 400·전체 굽기 묶음 `lastYn`)의 상태 코드·본문·PNG 화소와 가짜 Java·OpenAI가 받은 요청이 같음
+5. 대조 준비 — `contract/fake_java.py`: 작업 생성·`success`·`failure`·`regen-start`·`original-photo`·`bake-items`·`bake-targets`·시트 저장·굽기 실패·`equipped-image`에 사례별 답(`/__script`의 경로 패턴별 단계), `contract/compare.py`: 응답 뒤 작업이 끝날 때까지 기록을 기다림(사례마다 "마지막 요청" 경로가 기록될 때까지, 제한 30초). 전체 굽기는 13개가 동시에 돌아 요청 순서가 매번 달라 키(`pixelCharSn`·`itemSn`)로 정렬해 비교
+6. 2번 확인 — 화면: 사람이 2번에서 `curl -H 'X-Requested-With: XMLHttpRequest' -H 'Cookie: access_token=<회원>' -F petSn=<n> -F photo=@<사진> http://127.0.0.1:8100/ai/characters` → 202, `journalctl -u nyangmeong-character`에 "전체 굽기 시간" 줄, 그동안 `vmstat 1`의 `si`·`so` 0, `ps -o rss -C nyangmeong-character` 최대값. 시크릿 `ENV_FILE`(`BACKEND_BASE_URL`·`OPENAI_API_KEY`)이 들어간 뒤에만 가능 → 안 되어 있으면 "다음에 할 것"에 남긴다
+7. 문서 — `migration.md` "M5에서 옮긴 것"·알려진 차이(4의 시작 시점), `contract/README.md` 범위·사례 수, `milestones/LJS.md` M5 기능 줄(경로 5개)
 
-질문: 7의 처리 — (가) 동작은 그대로 두고 기록만 바로잡는다(추천: 업로드는 몇 MB라 합계 차이가 날 일이 거의 없음) (나) httpx처럼 읽기·쓰기 한 번마다 재도록 맞춘다(본문 스트림 감시와 머리 대기 타이머 재설정, `clients.rs`·`backend.rs`에 수십 줄)
-결정: HEAVY_CONCURRENCY=2. M4는 [A]만, [B]는 M5. 7은 (가) 동작은 그대로 두고 기록만 바로잡는다
+질문:
+1. 관리자 무료 재생성(59ba84f, PR #84 `/ai/admin/characters/jobs/{n}/regenerate`)을 M5에 넣는가 — (가) 넣는다(추천: 1의 저장소 추가분과 `generate_and_report`를 그대로 같이 쓰고, 빼면 M6 전환 때 Python을 지우는 순간 이 경로가 사라짐 [나중에 깨짐]) (나) M5는 원래 4개만, 재생성은 M5 뒤 별도 마일스톤
+결정: (가) 재생성 경로를 M5에 넣는다
+경로: 바로 수정이 아니라 큰 변경(러스트 파일 4개 이상·큐는 기존 테스트 없음). `.sap/config`가 없어 한 세션(`/impl` 검증 루프)으로 한다
+새 의존성: 없음(`tokio::sync::oneshot`은 이미 켠 `sync` 기능, 상태 잠금은 `std::sync::Mutex`)
 
-새 의존성: 없음(이미 넣은 `reqwest` `rustls`·`base64` 0.22 그대로)
+### 추가 요청
+
+| 추가-1 | `contract/compare.py` | 명령: `sh scripts/check.sh` 대조 119/119(시트 파일 두 개를 동시에 받는 사례 4개를 순서 없이 비교) | 요청 2026-11-16 22:40 "잠금 풀고 unordered 붙이는 것 승인" |
+
 
 ## 다음에 할 것
 
-- M5 시작 전 확인: develop이 59ba84f로 움직였다(PR #84 `SCR-MYP-010 관리자 무료 재생성`): 8번째 경로 `/ai/admin/characters/jobs/{n}/regenerate`, `report_success`의 `photo` 파트, 실패 사유 `CHARACTER_INPUT_ERROR`, Java `regen-start`·`original-photo`. 7개 경로 계획에 없던 것이라 M5 `/start`에서 옮길 범위에 넣을지 정한다(`/start`는 새 원본 커밋으로 다시 읽는다)
-
+- 연결 남음: M5 2번 확인 (시크릿 `ENV_FILE`에 `BACKEND_BASE_URL`·새 `OPENAI_API_KEY`를 넣고 다시 배포한 뒤, 2번에 캐릭터 생성 1회 → "전체 굽기 시간" 로그·`vmstat` `si`/`so` 0·`ps -o rss` 최대값, LJS)
+- OpenAI 키 교체: 2026-11-17 확인 중 키가 대화 기록에 노출됐다. 대시보드에서 폐기·새로 발급하고 `.env.local`·`ENV_FILE`을 바꾼다(LJS). 크레딧은 충전함(소진 시 OpenAI 429 `insufficient_quota`, 로그에는 `RateLimitError`만 남음)
+- 결정 대기: 크레딧 부족 알림 — (가) `src/clients.rs`에서 429 본문 `code`를 읽어 운영 로그에만 남김(추천, 응답·Java 보고 그대로) (나) 실패 사유를 새 값으로 Java에 보고(Python과 결과가 달라져 M6 뒤). 회원 화면에는 노출하지 않는다
 - 2번 서버 최대 메모리: Actions `build`의 `image_bench` 산출물을 2번에 올려 `chmod +x image_bench && /usr/bin/time -v ./image_bench <시트 폴더>`의 `Maximum resident set size`를 `migration.md` M3 측정 표에 적는다(RAM 1GB 안에 여유). 서버에서 cargo build 안 함
-- M4 2번 확인 전에 시크릿 `ENV_FILE`에 `BACKEND_BASE_URL`·`OPENAI_API_KEY`를 넣고 다시 배포한다
 - 쓰고 난 실제 시트 폴더와 `target/character-gold`는 실제 반려동물 그림이라 지운다

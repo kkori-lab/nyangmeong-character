@@ -129,5 +129,10 @@ def read_body(handler: BaseHTTPRequestHandler) -> bytes:
     return handler.rfile.read(length) if length else b""
 
 
+class Server(ThreadingHTTPServer):
+    # 기본 5면 전체 굽기(동시 13개)의 연결이 넘쳐 거절된다. Java(Tomcat) 기본 acceptCount는 100
+    request_queue_size = 100
+
+
 def run(handler_class: type, port: int) -> None:
-    ThreadingHTTPServer(("127.0.0.1", port), handler_class).serve_forever()
+    Server(("127.0.0.1", port), handler_class).serve_forever()

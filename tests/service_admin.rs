@@ -80,12 +80,19 @@ impl CharacterJobRepository for FakeRepo {
     async fn create_job(&self, _: i64) -> Result<CharacterJob, ApiError> {
         unused()
     }
+    async fn regen_start(&self, _: i64) -> Result<CharacterJob, ApiError> {
+        unused()
+    }
+    async fn fetch_original_photo(&self, _: i64) -> Result<Bytes, ApiError> {
+        unused()
+    }
     async fn report_success(
         &self,
         _: i64,
         _: &[u8],
         _: &[u8],
         _: Option<Layout>,
+        _: Option<(&str, &[u8])>,
     ) -> Result<i64, ApiError> {
         unused()
     }

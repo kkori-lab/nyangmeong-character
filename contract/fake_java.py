@@ -2,7 +2,10 @@
 
 캐릭터 내부 API(`/internal/ai/**`)는 받은 요청을 기록하고(`GET /__log`, `POST /__reset`), 사례가 정한 답을 준다(`POST /__script`):
   {"sheets": {"status": 200, "data": {...}}, "files": {"<파일 번호>": "<PNG base64>"}, "file_status": {"<번호>": 404}}
-쓰기 요청(POST·PUT)은 기록만 하고 200 {"data": {"pixelCharSn": 77}}로 답한다.
+  {"routes": [{"method": "POST", "path": "<정규식, 경로 전체>", "status": 200, "data": ..., "code": "...", "file_b64": "...", "once": true}]}
+    routes가 먼저다 : 위에서부터 메서드·경로가 맞는 첫 항목으로 답한다. once면 한 번 쓰고 지운다.
+    file_b64가 있으면 그 바이트(image/png), 200이면 {"data": data} 봉투, 아니면 Java 오류 본문(code)
+쓰기 요청(POST·PUT)은 routes에 없으면 기록만 하고 200 {"data": {"pixelCharSn": 77}}로 답한다.
 사용: python contract/fake_java.py [포트=18080]
 쿠키 access_token 값 → 응답
   member  200 일반 회원        admin  200 관리자(USRC0005)
@@ -63,11 +66,32 @@ class Handler(BaseHTTPRequestHandler):
     def do_PUT(self) -> None:
         self.write_request()
 
+    def serve_route(self, path: str) -> bool:
+        """routes에 맞는 항목이 있으면 그 답을 보낸다"""
+        routes = RECORDER.script.get("routes", [])
+        for at, route in enumerate(routes):
+            if route.get("method", self.command) != self.command or not re.fullmatch(route["path"], path):
+                continue
+            if route.get("once"):
+                del routes[at]
+            status = route.get("status", 200)
+            if "file_b64" in route:
+                self.send(status, base64.b64decode(route["file_b64"]), "image/png")
+            elif status == 200:
+                envelope = {"timestamp": "t", "status": "success", "httpCode": 200, "message": "ok", "data": route.get("data")}
+                self.send(200, json.dumps(envelope, ensure_ascii=False).encode(), JSON_TYPE)
+            else:
+                self.send(status, java_error(status, "오류", route.get("code", "ERROR"), path), JSON_TYPE)
+            return True
+        return False
+
     def write_request(self) -> None:
         body = fakelib.read_body(self)
         if fakelib.serve_control(self, RECORDER, body):
             return
         RECORDER.log.append(fakelib.record_of(self, body))
+        if self.serve_route(self.path.split("?")[0]):
+            return
         envelope = {"timestamp": "t", "status": "success", "httpCode": 200, "message": "ok", "data": {"pixelCharSn": 77}}
         self.send(200, json.dumps(envelope).encode(), JSON_TYPE)
 
@@ -79,7 +103,8 @@ class Handler(BaseHTTPRequestHandler):
         if not path.startswith("/internal/ai/tools"):
             RECORDER.log.append(fakelib.record_of(self, b""))
         if path.startswith("/internal/ai/"):
-            self.serve_character(path)
+            if not self.serve_route(path):
+                self.serve_character(path)
             return
         if self.path != "/internal/auth/check":
             self.send(404, java_error(404, "없음", "NOT_FOUND", self.path), "application/json")

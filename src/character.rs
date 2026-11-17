@@ -1,6 +1,6 @@
-//! `app/character/router.py` 경로 7개 : 핸들러 전 단계(본문 읽기 → X-Requested-With →
-//! 인증 → 값 검증)까지 Python과 같다. 핸들러 본문은 관리자 3개(bake-hints·pixel-image·trial-preview)를
-//! M4에서 옮겼고, 나머지 4개는 M5에서 옮긴다(그때까지 501)
+//! `app/character/router.py` 경로 8개 : 본문 읽기 → X-Requested-With → 인증 → 값 검증 → 핸들러 순서가 Python과 같다
+//! - 차이: Starlette `BackgroundTasks`는 응답 본문을 다 보낸 뒤 시작한다. 여기는 응답을 돌려주기 직전에
+//!   `tokio::spawn`으로 띄워 Java 호출이 응답보다 먼저 갈 수 있다(응답·Java가 받는 요청은 같음)
 
 use crate::auth;
 use crate::backend::Backend;
@@ -9,6 +9,7 @@ use crate::error::ApiError;
 use crate::form::{self, FormData, JsonBody};
 use crate::image::MAX_IMAGE_BYTES;
 use crate::pyval;
+use crate::queue::BakeQueue;
 use crate::repository::JavaRepository;
 use crate::response::{self, AppError};
 use crate::service;
@@ -17,6 +18,7 @@ use axum::http::{HeaderMap, Method, header};
 use axum::response::Response;
 use bytes::Bytes;
 use serde_json::{Map, Value, json};
+use std::sync::Arc;
 
 /// FN-ADM-070-02 : 관리자 아이템 등록 보조
 pub const ITEM_NM_MAX: usize = 50;
@@ -31,7 +33,13 @@ pub enum Route {
     PixelImage,
     TrialPreview,
     BakeItem,
+    Regenerate,
 }
+
+/// 프로세스에 하나인 굽기 큐
+pub type AppQueue = BakeQueue<OpenAiClient, JavaRepository>;
+
+const ITEM_BAKING_MESSAGE: &str = "아이템을 준비하고 있습니다. 잠시 후 다시 시도해 주세요.";
 
 /// 경로 일치 결과 : 경로 매개변수(디코딩된 문자열)
 pub struct Matched {
@@ -72,6 +80,10 @@ pub fn match_path(path: &str) -> Option<Matched> {
             route: Route::BakeItem,
             param: Some(param(sn)?),
         },
+        ["ai", "admin", "characters", "jobs", sn, "regenerate"] => Matched {
+            route: Route::Regenerate,
+            param: Some(param(sn)?),
+        },
         _ => return None,
     };
     Some(matched)
@@ -80,7 +92,8 @@ pub fn match_path(path: &str) -> Option<Matched> {
 pub struct Ctx<'a> {
     pub backend: &'a Backend,
     /// 키가 없으면 None : 업로드 검증 뒤 502
-    pub client: Option<&'a OpenAiClient>,
+    pub client: Option<Arc<OpenAiClient>>,
+    pub queue: &'a Arc<AppQueue>,
     pub method: &'a Method,
     pub headers: &'a HeaderMap,
     pub body: Bytes,
@@ -102,7 +115,7 @@ pub async fn handle(matched: Matched, ctx: Ctx<'_>) -> Result<Response, ApiError
         Preview | EquippedImage | TrialPreview => {
             Body::Json(form::read_json_body(ctx.headers, &ctx.body)?)
         }
-        BakeItem => Body::None,
+        BakeItem | Regenerate => Body::None,
     };
     // 2. 라우터 의존성 : X-Requested-With
     auth::require_requested_with(ctx.method, ctx.headers)?;
@@ -111,7 +124,7 @@ pub async fn handle(matched: Matched, ctx: Ctx<'_>) -> Result<Response, ApiError
         CreateCharacter | Preview | EquippedImage => {
             auth::require_member(ctx.backend, ctx.headers).await?
         }
-        BakeHints | PixelImage | TrialPreview | BakeItem => {
+        BakeHints | PixelImage | TrialPreview | BakeItem | Regenerate => {
             auth::require_admin(ctx.backend, ctx.headers).await?
         }
     };
@@ -140,17 +153,103 @@ pub async fn handle(matched: Matched, ctx: Ctx<'_>) -> Result<Response, ApiError
         (TrialPreview, Body::Json(json)) => {
             trial_request(json).ok_or(ApiError::Validation)?;
         }
-        (BakeItem, Body::None) => {
+        (BakeItem | Regenerate, Body::None) => {
             path_int(param)?;
         }
         _ => unreachable!("경로마다 본문 종류가 정해져 있음"),
     }
     // 5. 핸들러
+    let repo = || {
+        Arc::new(JavaRepository::new(
+            ctx.backend.clone(),
+            ctx.headers.get(header::COOKIE).cloned(),
+        ))
+    };
+    let client = ctx.client.as_deref();
     match (matched.route, &body) {
+        (CreateCharacter, Body::Form(form)) => {
+            let photo = form.file("photo").expect("값 검증을 통과함");
+            let pet_sn = form
+                .text("petSn")
+                .and_then(pyval::pydantic_int_str)
+                .expect("값 검증을 통과함");
+            // 10MB + 1바이트까지만 읽기 : 초과 판정용
+            let image = upload_bytes(photo);
+            let repo = repo();
+            let job = service::create_job(client, &*repo, image, &photo.filename, pet_sn).await?;
+            let char_crt_job_sn = job.char_crt_job_sn;
+            // FN-MYP-010-09 : 응답 뒤 생성 (상태 조회는 React가 Java에서)
+            let generator = ctx.client.clone().expect("create_job이 생성기 확인");
+            tokio::spawn(service::generate_and_report(
+                generator,
+                repo,
+                ctx.queue.clone(),
+                job,
+                image.to_vec(),
+                Some(photo.filename.clone()),
+            ));
+            Ok(response::success(
+                Some(json!({ "charCrtJobSn": char_crt_job_sn })),
+                202,
+            ))
+        }
+        (Regenerate, Body::None) => {
+            // FN-MYP-010-23 : Java가 만든 REGEN 작업 번호만 받고 입력은 Java에서 받음
+            let char_crt_job_sn = path_int(param)?;
+            service::regenerate(ctx.client.clone(), repo(), ctx.queue, char_crt_job_sn)?;
+            Ok(response::success(None, 202))
+        }
+        (Preview, Body::Json(json)) => {
+            let pixel_char_sn = path_int(param)?;
+            let item_sns = preview_request(json).expect("값 검증을 통과함");
+            let image = service::preview(
+                ctx.client.clone(),
+                repo(),
+                ctx.queue,
+                pixel_char_sn,
+                &item_sns,
+            )
+            .await?;
+            match image {
+                Some(png) => Ok(png_response(png)),
+                None => Err(item_baking(ctx.queue)),
+            }
+        }
+        (EquippedImage, Body::Json(json)) => {
+            let pixel_char_sn = path_int(param)?;
+            let item_sns = preview_request(json).expect("값 검증을 통과함");
+            let saved = service::save_equipped_image(
+                ctx.client.clone(),
+                repo(),
+                ctx.queue,
+                pixel_char_sn,
+                &item_sns,
+            )
+            .await?;
+            if saved {
+                return Ok(response::success(None, 200));
+            }
+            Err(item_baking(ctx.queue))
+        }
+        (BakeItem, Body::None) => {
+            // 한 묶음을 다 굽고 답함 : 관리자 프론트가 lastYn까지 다시 부름 (쿠키 30분 만료 대책)
+            let item_sn = path_int(param)?;
+            let result =
+                service::bake_item_batch(ctx.client.clone(), repo(), ctx.queue, item_sn).await?;
+            Ok(response::success(
+                Some(json!({
+                    "itemSn": item_sn,
+                    "bakedCnt": result.baked_cnt,
+                    "failedCnt": result.failed_cnt,
+                    "lastYn": result.last,
+                })),
+                200,
+            ))
+        }
         (BakeHints, Body::Form(form)) => {
             let (image, regn_cd, item_nm) = admin_item_form(form);
             let hint = service::describe_item(
-                ctx.client,
+                client,
                 upload_bytes(image),
                 &image.filename,
                 regn_cd,
@@ -162,7 +261,7 @@ pub async fn handle(matched: Matched, ctx: Ctx<'_>) -> Result<Response, ApiError
         (PixelImage, Body::Form(form)) => {
             let (image, regn_cd, item_nm) = admin_item_form(form);
             let png = service::draw_item(
-                ctx.client,
+                client,
                 upload_bytes(image),
                 &image.filename,
                 regn_cd,
@@ -174,18 +273,21 @@ pub async fn handle(matched: Matched, ctx: Ctx<'_>) -> Result<Response, ApiError
         (TrialPreview, Body::Json(json)) => {
             let (pixel_char_sn, regn_cd, bake_hint) =
                 trial_request(json).expect("값 검증을 통과함");
-            let repo = JavaRepository::new(
-                ctx.backend.clone(),
-                ctx.headers.get(header::COOKIE).cloned(),
-            );
+            let repo = repo();
             let png =
-                service::trial_preview(ctx.client, &repo, pixel_char_sn, &regn_cd, &bake_hint)
-                    .await?;
+                service::trial_preview(client, &*repo, pixel_char_sn, &regn_cd, &bake_hint).await?;
             Ok(png_response(png))
         }
-        // 굽기 큐와 회원 경로 : M5
-        _ => Err(AppError::new("NOT_IMPLEMENTED", 501, "러스트로 옮기는 중입니다.").into()),
+        _ => unreachable!("경로마다 본문 종류가 정해져 있음"),
     }
+}
+
+/// 아직 안 구운 아이템 : 응답 뒤 굽고 409 `ITEM_BAKING`
+/// (Python은 예외로 끝내면 백그라운드 작업이 버려져 `response.error`를 직접 돌려준다. 응답 모양은 같다)
+fn item_baking(queue: &Arc<AppQueue>) -> ApiError {
+    let queue = queue.clone();
+    tokio::spawn(async move { queue.drain().await });
+    AppError::new("ITEM_BAKING", 409, ITEM_BAKING_MESSAGE).into()
 }
 
 /// 업로드는 10MB + 1바이트까지만 읽음 : 초과 판정용
