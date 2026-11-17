@@ -135,7 +135,7 @@
 - 정수는 i64까지(Python은 무제한 → Java가 4xx)
 - `json.loads`의 UTF-16·NaN·Infinity 미지원
 - multipart 비정상 본문 세부(multer와 python-multipart)
-- 로그는 날짜별 파일 대신 journald
+- 로그: 원본처럼 `LOG_DIR` 날짜별 파일(30일 보관)에 `app.*`를 쓰고 콘솔(journald)에도 남긴다. 파일 이름 접두사는 `ai_` 대신 `character_`(1번 Python 파일과 구별). 2번은 systemd `TZ=Asia/Seoul`로 파일 날짜·시각이 한국 시각. 파일에 남는 기동·오류 줄은 uvicorn 메시지 대신 `INFO app.main - listening on <주소>`·`ERROR app.main - panic: <내용>`. 폴더를 못 열 때 경고 끝의 오류 문구는 러스트 `io::Error` 문자열
 - 307 Location의 scheme은 `X-Forwarded-Proto`(없으면 http)
 - 이미지 PNG의 바이트(압축)는 Pillow(`optimize=True`)와 다르고 디코드한 화소는 같다. 색 형식(RGB·RGBA)은 같다
 - `normalize_photo`·`normalize_item_image`: PNG(8비트·팔레트·회색·RGBA·EXIF 방향)는 Pillow와 화소까지 같다. JPEG·손실 WebP는 디코더(Pillow는 libjpeg-turbo·libwebp, 여기는 zune-jpeg·image-webp)가 달라 화소가 조금 다르다(크기·방향은 같음). 손실 없는 WebP는 같다. 사진 방향은 EXIF 청크만 읽는다(Pillow는 없으면 PNG `Raw profile type exif` 텍스트 청크와 XMP `tiff:Orientation`도 본다 → 거기에만 방향이 적힌 사진은 누운 채로 남는다). 결과는 OpenAI 입력으로만 쓴다
