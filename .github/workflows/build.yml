@@ -22,3 +22,11 @@ jobs:
         run: cargo test
       - name: build
         run: cargo build --release
+      # 2번 서버(RAM 1GB)에서 cargo build를 하지 않고 측정하려고 러너에서 측정 프로그램을 빌드해 올린다
+      - name: build image_bench
+        run: cargo build --release --example image_bench
+      - uses: actions/upload-artifact@v4
+        with:
+          name: image_bench
+          path: target/release/examples/image_bench
+          retention-days: 14
