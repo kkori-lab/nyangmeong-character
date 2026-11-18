@@ -131,6 +131,7 @@
 - 굽기 큐 일꾼 수: 여기는 잠금 안에서 일꾼 수를 먼저 올려 동시에 굽는 수가 늘 13(`BAKE_CONCURRENCY`) 이하다. Python은 `_work`가 처음 돌 때 수를 올려, 한 틈에 `drain`이 두 번 불리면 상한을 넘는다(검증 에이전트 실측: 작업 20개에 `gather(drain(), drain())` → 동시 20). 굽는 결과·Java 보고는 같고 OpenAI 동시 호출 수만 다르다
 - 굽기 중 패닉: Python은 `_bake_one`의 예외를 `except Exception`으로 받고 같은 일꾼이 다음 작업을 꺼낸다. 여기는 패닉한 일꾼이 끝난다(굽는 중 표시 정리·대기자 알림·일꾼 수 줄이기는 Drop이 함). 남은 작업은 다른 일꾼이나 다음 `drain`이 꺼낸다. 패닉은 코드 결함일 때만 나고(이미지 계산의 패닉은 `heavy`가 오류로 바꿈) 일반 실패는 Python처럼 결과(`None`·실패 표시)로 돌아온다
 - 요청이 끊겼을 때(시험 안 함, hyper·uvicorn 동작에서 추정): axum은 연결이 끊기면 핸들러 future를 버린다. 전체 굽기는 일꾼이 따로 돌아 굽기·Java 보고는 끝까지 가고 응답만 안 간다(uvicorn은 핸들러를 끝까지 돈다). 미리보기·생성 경로는 응답 전에 끊기면 그 뒤 일(작업 생성 등)을 안 한다
+- OpenAI 429 사유 로그: 429가 마지막 오류로 돌아갈 때 본문의 `error.code`(예: `insufficient_quota`, 1~64자 영숫자·`_`·`-`·`.`만)를 `WARNING app.character.clients - OpenAI 429 사유: <code>` 한 줄로 더 남긴다(크레딧 부족 알림, 2026-11-18 결정). Python은 `RateLimitError`만 남긴다. 응답·Java 보고·OpenAI 요청 횟수는 같다
 
 - 정수는 i64까지(Python은 무제한 → Java가 4xx)
 - `json.loads`의 UTF-16·NaN·Infinity 미지원
