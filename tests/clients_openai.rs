@@ -330,3 +330,19 @@ async fn timeout_then_success_returns_the_second_answer() {
     assert_eq!(hint, "a cap");
     assert_eq!(fake.seen.lock().unwrap().len(), 2);
 }
+
+#[tokio::test]
+async fn insufficient_quota_429_is_retried_once_then_fails() {
+    // 크레딧 부족 429 : 재시도는 그대로(요청 2건), 결과는 같은 실패. 사유는 운영 로그에만
+    let (client, fake) = start("5").await;
+    let quota = json!({"error": {"message": "You exceeded your current quota", "type": "insufficient_quota", "code": "insufficient_quota"}});
+    push(&fake, "/chat/completions", 429, quota.clone(), 0);
+    push(&fake, "/chat/completions", 429, quota, 0);
+
+    let result = client
+        .describe_item(&fixture("items/hat.png"), "MYPC0001", "모자")
+        .await;
+
+    assert!(result.is_err());
+    assert_eq!(fake.seen.lock().unwrap().len(), 2);
+}

@@ -59,3 +59,10 @@
 - 완료 조건: 명령: `sh scripts/check.sh`, `bash -n setup.sh` / 화면: 이 PC(Windows)에서 `setup.bat` 두 번 실행해 두 번째는 전부 `[있음]`, `.env.local` 키를 하나 빼면 할 일로 남고 0이 아닌 코드(맥 확인은 사람)
 - 연결 남음: 맥 `bash setup.sh` 확인 (맥 PC, LJS)
 - 연결 남음: 백엔드·프론트 setup 머리 주석 "셋 다" (백엔드·프론트 저장소에서 /start)
+
+## M9 OpenAI 429 사유 로그 (크레딧 부족 알림) — 끝
+- 기능: `src/clients.rs` `OpenAiClient::post`에서 마지막 429 응답 본문의 `error.code`(예: `insufficient_quota`)를 읽어 운영 로그에 경고 한 줄. 응답·Java 보고·기존 실패 로그(`… 실패: RateLimitError`)는 그대로. 회원 화면에는 노출하지 않는다(2026-11-18 (가)안 결정)
+- 원본: `nyangmeong-ai` `app/character/clients.py`(실패 로그 `type(exc).__name__`만, 원본에 없는 로그를 더함 → `migration.md` "알려진 차이")
+- 완료 조건: 명령: `sh scripts/check.sh`(사유 읽기 단위 테스트, 429 통합 테스트, 대조 사례 `bake-hints 429 insufficient_quota`) / 화면: 가짜 OpenAI가 `insufficient_quota` 429를 주게 하고 `LOG_DIR`를 켠 서버에 bake-hints 요청 → 로그 파일에 사유 줄 1개와 기존 실패 줄
+- 결과: 검증 1회차 통과, 대조 120/120, 사람 확인(2026-11-18)
+- 연결 남음: 2번 사유 로그 확인 (다음 실제 크레딧 소진, LJS)

@@ -2,10 +2,11 @@
 
 ## 지금 하는 것
 
-M8 개발 환경 설치 (setup.sh·setup.bat) — 끝 (검증 통과, 사람 확인 2026-11-17). `setup.bat`→Git Bash `setup.sh`: 공통 절은 백엔드 c4987e6 그대로(VS Code·MCP 함수 뺌), 러스트 절(MSVC·rustup·stable·`.env.local` 키·옆 `nyangmeong-ai` .venv), 확인 절(`cargo build`·`PORT=0` `/health`). `OPENAI_BASE_URL`은 키 비교에서 뺌. 다음은 대기 맨 위
+M9 OpenAI 429 사유 로그 (크레딧 부족 알림) — 끝 (검증 통과 1회차, 사람 확인 2026-11-18, 대조 120/120). `src/clients.rs` `post`에서 429가 마지막 오류일 때 본문 `error.code`를 `WARNING app.character.clients - OpenAI 429 사유: <code>`로 한 줄 남김(`quota_code`가 1~64자 영숫자·`_-.`만). 응답·재시도·기존 `RateLimitError` 줄은 그대로, `migration.md` "알려진 차이"에 적음. 다음은 대기 맨 위
 
 ## 다음에 할 것
 
+- 연결 남음: M9 2번 사유 로그 — 다음 실제 크레딧 소진 때 2번 `/var/log/nyangmeong-character/character_<날짜>.log`에 `OpenAI 429 사유: insufficient_quota` 줄이 `… 실패: RateLimitError` 바로 앞에 나오는지 (LJS)
 - 연결 남음: M8 맥 확인 — 맥 터미널에서 `bash setup.sh` → rustup이 없으면 sh.rustup.rs로 설치·`~/.zshrc`에 `~/.cargo/bin` PATH, 끝에 `[완료] 서버 기동`, 두 번째 실행 종료 코드 0. Windows 더블클릭 시 끝에서 창이 멈추는지도 (LJS)
 - 연결 남음: M8 백엔드·프론트 `setup.sh`·`setup.bat` 머리 주석 "고칠 때 둘 다" → "셋 다(캐릭터 포함)" (백엔드·프론트 저장소에서 /start)
 - `.gitattributes`에 `*.bat text eol=crlf` 추가(백엔드와 같게). 지금은 `core.autocrlf=true` PC에서만 CRLF로 받는다. autocrlf가 꺼진 Windows 클론이면 LF .bat가 되어 `goto`·라벨이 어긋날 수 있다(검증 비고)
@@ -17,6 +18,5 @@ M8 개발 환경 설치 (setup.sh·setup.bat) — 끝 (검증 통과, 사람 확
 - 연결 남음: M6 공지(사람, 전환은 됨): 백엔드·프론트 팀원에게 "캐릭터·아이템 경로 8개(`/ai/characters`·`/ai/characters/{n}/preview`·`/ai/characters/{n}/equipped-image`·`/ai/items/bake-hints`·`/ai/items/pixel-image`·`/ai/items/trial-preview`·`/ai/items/{n}/bake`·`/ai/admin/characters/jobs/{n}/regenerate`)가 2026-11-17 12:02부터 2번 러스트 서버로 갑니다. 요청·응답 계약(ApiResponse·오류 코드·Java 내부 API 호출)은 그대로입니다. 문제가 보이면 알려 주세요. nginx 블록만 지우면 바로 Python으로 돌아갑니다"
 - 로그: Java 응답 모양이 틀리거나 Java가 4xx로 답하면 `굽기 대상 조회 실패` 한 줄만 남고 이유가 없다(Python은 traceback에 `AppError`만). 이유 한 줄을 붙일지는 Python과 같이 정한다
 - OpenAI 키 교체: 2026-11-17 확인 중 키가 대화 기록에 노출됐다. 대시보드에서 폐기·새로 발급하고 `.env.local`·`ENV_FILE`을 바꾼다(LJS). 크레딧은 충전함(소진 시 OpenAI 429 `insufficient_quota`, 로그에는 `RateLimitError`만 남음)
-- 결정 대기: 크레딧 부족 알림 — (가) `src/clients.rs`에서 429 본문 `code`를 읽어 운영 로그에만 남김(추천, 응답·Java 보고 그대로) (나) 실패 사유를 새 값으로 Java에 보고(Python과 결과가 달라져 M6 뒤). 회원 화면에는 노출하지 않는다
 - 2번 서버 최대 메모리: Actions `build`의 `image_bench` 산출물을 2번에 올려 `chmod +x image_bench && /usr/bin/time -v ./image_bench <시트 폴더>`의 `Maximum resident set size`를 `migration.md` M3 측정 표에 적는다(RAM 1GB 안에 여유). 서버에서 cargo build 안 함
 - 쓰고 난 실제 시트 폴더와 `target/character-gold`는 실제 반려동물 그림이라 지운다
