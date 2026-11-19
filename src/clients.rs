@@ -179,7 +179,10 @@ impl OpenAiClient {
                         _ => matches!(status, 408 | 409 | 429) || status >= 500,
                     };
                     let error = SdkError::Status(status);
-                    if !retry {
+                    if !retry || retries_left == 0 {
+                        if status == 429 {
+                            log_quota_code(res).await;
+                        }
                         return Err(error);
                     }
                     (error, retry_after(&headers))
@@ -316,6 +319,28 @@ impl OpenAiClient {
 struct Rendered {
     sheet: Vec<u8>,
     placement: Option<canvas::Placement>,
+}
+
+/// 429 본문 `{"error": {"code": ...}}`의 `code` (예: `insufficient_quota`).
+/// 1~64자 ASCII 영숫자·`_`·`-`·`.`만 받는다. 본문의 나머지는 읽지 않는다
+fn quota_code(body: &[u8]) -> Option<String> {
+    let value: Value = serde_json::from_slice(body).ok()?;
+    let code = value.get("error")?.get("code")?.as_str()?;
+    let ok = (1..=64).contains(&code.len())
+        && code
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-' | b'.'));
+    ok.then(|| code.to_owned())
+}
+
+/// 원본에 없는 운영 로그 한 줄(크레딧 부족 알림). 응답·Java 보고는 그대로 (`migration.md` "알려진 차이")
+async fn log_quota_code(res: reqwest::Response) {
+    let Ok(body) = res.bytes().await else {
+        return;
+    };
+    if let Some(code) = quota_code(&body) {
+        logs::warning(LOGGER, format!("OpenAI 429 사유: {code}"));
+    }
 }
 
 fn transport_error(error: &reqwest::Error) -> SdkError {
@@ -528,6 +553,37 @@ mod tests {
             let capped = retry_delay(None, 9).as_secs_f64();
             assert!((6.0..=8.0).contains(&capped), "{capped}");
         }
+    }
+
+    #[test]
+    fn quota_code_reads_only_a_safe_error_code() {
+        let code = |body: &str| quota_code(body.as_bytes());
+        assert_eq!(
+            code(
+                r#"{"error": {"message": "You exceeded your quota", "type": "insufficient_quota", "code": "insufficient_quota"}}"#
+            ),
+            Some("insufficient_quota".into())
+        );
+        assert_eq!(
+            code(r#"{"error": {"code": "rate_limit_exceeded"}}"#),
+            Some("rate_limit_exceeded".into())
+        );
+        assert_eq!(code(r#"{"error": {"code": null}}"#), None);
+        assert_eq!(code(r#"{"error": {"code": 429}}"#), None);
+        assert_eq!(code(r#"{"error": {"code": ""}}"#), None);
+        assert_eq!(
+            code(&format!(r#"{{"error": {{"code": "{}"}}}}"#, "a".repeat(65))),
+            None
+        );
+        assert_eq!(
+            code(&format!(r#"{{"error": {{"code": "{}"}}}}"#, "a".repeat(64))),
+            Some("a".repeat(64))
+        );
+        assert_eq!(code(r#"{"error": {"code": "bad\ncode"}}"#), None);
+        assert_eq!(code(r#"{"error": {"code": "a b"}}"#), None);
+        assert_eq!(code(r#"{"code": "insufficient_quota"}"#), None);
+        assert_eq!(code("Too Many Requests"), None);
+        assert_eq!(code(""), None);
     }
 
     #[test]

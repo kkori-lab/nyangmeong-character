@@ -15,6 +15,8 @@ pub struct Settings {
     pub character_vision_model: String,
     /// FN-MYP-010-09 : 외부 호출 한 번의 제한 시간(초)
     pub character_timeout_sec: f64,
+    /// 로그 파일 폴더(2번 `/var/log/nyangmeong-character`) : 비면 콘솔에만
+    pub log_dir: String,
 }
 
 impl Settings {
@@ -44,6 +46,7 @@ impl Settings {
             character_vision_model: get("CHARACTER_VISION_MODEL")
                 .unwrap_or_else(|| "gpt-5-nano".into()),
             character_timeout_sec: float("CHARACTER_TIMEOUT_SEC", 180.0),
+            log_dir: get("LOG_DIR").unwrap_or_default(),
         }
     }
 }
@@ -119,5 +122,9 @@ mod tests {
         let settings = Settings::from_lookup(get);
         assert_eq!(settings.character_timeout_sec, 30.0);
         assert_eq!(settings.character_image_model, "gpt-image-2");
+        assert_eq!(settings.log_dir, "");
+        let settings =
+            Settings::from_lookup(|name| (name == "LOG_DIR").then(|| "/var/log/x".into()));
+        assert_eq!(settings.log_dir, "/var/log/x");
     }
 }

@@ -16,6 +16,15 @@ fn port() -> u16 {
 #[tokio::main]
 async fn main() {
     let settings = Settings::from_env();
+    // create_app 첫 줄 logs.configure : 다른 로그보다 먼저
+    logs::configure(&settings.log_dir, Box::new(logs::local_today));
+    // uvicorn.error처럼 처리 안 된 오류(패닉)도 파일에 남긴다 : 기본 출력 뒤 한 줄
+    let default_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        default_hook(info);
+        let message = info.to_string().replace('\n', " ");
+        logs::error("app.main", format!("panic: {message}"));
+    }));
     if settings.backend_base_url.is_empty() {
         logs::warning(
             "app.main",
@@ -27,7 +36,9 @@ async fn main() {
     let listener = tokio::net::TcpListener::bind(addr)
         .await
         .expect("failed to bind port");
-    println!("listening on {addr}");
+    // PORT=0(setup.sh 확인)이면 OS가 고른 실제 포트를 적는다
+    let addr = listener.local_addr().unwrap_or(addr);
+    logs::info("app.main", format!("listening on {addr}"));
     axum::serve(listener, app(AppState::new(settings)))
         .await
         .expect("server error");

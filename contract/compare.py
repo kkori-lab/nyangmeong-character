@@ -211,6 +211,7 @@ SCENARIOS = [
     scenario("bake-hints 500 두 번", item_form(HINT), openai={"chat": [ERR500, ERR500]}),
     scenario("bake-hints 500 뒤 성공(재시도)", item_form(HINT), openai={"chat": [ERR500, chat("a cap")]}),
     scenario("bake-hints 429 retry-after-ms 뒤 성공", item_form(HINT), openai={"chat": [{"status": 429, "headers": {"retry-after-ms": "20"}}, chat("a cap")]}),
+    scenario("bake-hints 429 insufficient_quota", item_form(HINT), openai={"chat": [{"status": 429, "body": {"error": {"message": "You exceeded your current quota", "type": "insufficient_quota", "code": "insufficient_quota"}}}] * 2}),
     scenario("bake-hints 400은 재시도 없음", item_form(HINT), openai={"chat": [{"status": 400}, chat("a cap")]}),
     scenario("bake-hints x-should-retry false", item_form(HINT), openai={"chat": [{"status": 500, "headers": {"x-should-retry": "false"}}, chat("a cap")]}),
     scenario("bake-hints x-should-retry true", item_form(HINT), openai={"chat": [{"status": 400, "headers": {"x-should-retry": "true"}}, chat("a cap")]}),

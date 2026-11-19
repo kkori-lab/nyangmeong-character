@@ -18,6 +18,8 @@
 - 2026-11-16: Python 코드를 그대로 옮긴다. 원본은 `nyangmeong-ai` develop. 다르게 할 수밖에 없는 것은 아래 "알려진 차이"에 적는다.
 - 2026-11-16: 이전 중 1번 임시 대책(`BAKE_CONCURRENCY` 낮추기·계산만 세마포어)은 하지 않는다. `BAKE_CONCURRENCY = 13` 유지.
 - 2026-11-16: 배포 위치는 AI(`/home/<계정>/ai-backend`)와 다르게 `/opt/nyangmeong-character` — 실행 파일만 두고 `ProtectHome=true`를 쓰려고(나중에 맞출 수 있음).
+- 2026-11-17: 전환은 nginx만 넘긴다. Python `app/character/`는 지우지 않고 남겨 둔다(문제 시 nginx 블록만 지우면 바로 Python으로 돌아감). 위 2026-11-16의 "이전이 끝나면 뺀다"는 보류.
+- 2026-11-17: nginx는 사람이 1번에서 직접 고친다(저장소에 nginx 설정 파일을 두지 않음). 절차는 아래 "M6 전환 절차".
 
 ## 옮길 범위 (`app/character/router.py`, 계약은 `nyangmeong-ai` `docs/api/character.md`·`internal.md`)
 
@@ -100,6 +102,19 @@
 
 테스트: `tests/bake_queue.rs`(원본 `test_bake.py` 큐 사례 + 동시 상한·대기자 공유), `tests/service_member.rs`(원본 create·preview·equipped·regenerate 서비스 사례), `tests/repository.rs` 추가 7개. 대조 119/119 같음(새 사례 34개, 응답 뒤 작업은 가짜 Java 기록이 멈출 때까지 기다린 뒤 비교).
 
+## M6 전환 절차 (nginx, 1번에서 사람이)
+
+전제: M5 2번 확인(생성 → 전체 굽기 로그·스왑 없음)이 끝난 뒤. 2026-11-17 시도에서 1번 Java(`main`)의 `GET /internal/ai/characters/bake-items` 응답에 `bakeImgRefYn`이 없어 굽기 대상 조회가 실패했다(원본 Python도 같은 필드를 필수로 읽음). 백엔드 `develop`→`main` 배포 뒤 다시 확인한다.
+
+1. 전: `sudo nginx -T | grep -n location`으로 기존 `/ai`가 접두사(`location /ai`)인지 확인한다(정규식 `~`이면 새 블록이 안 먹음). 1번 Python 로그에 진행 중인 굽기가 없는지 확인한다. Python 로그의 전체 굽기 묶음 시간을 보고 `/ai/items/`의 `proxy_read_timeout`을 정한다
+2. 블록: `location /ai/characters`(끝 `/` 없이)·`location /ai/admin/characters/`·`location /ai/items/` → `proxy_pass http://10.0.0.170:8100;`. `proxy_set_header`·`client_max_body_size`·timeout은 기존 `/ai` 블록에서 복사한다
+3. 적용: `sudo nginx -t && sudo systemctl reload nginx`
+4. 기대: `curl -s -w '\n%{http_code}\n' -X POST https://pawever.cloud/ai/characters/1/preview` → 403 `FORBIDDEN`이고 2번 `journalctl -u nyangmeong-character`에 `POST /ai/characters/{n}/preview -> 403` 한 줄(러스트가 받음). 다른 `/ai` 경로(예: `/ai/health`)는 1번 Python 그대로 200
+5. 사이트 확인: 캐릭터 생성·아이템 등록(관리자)·전체 굽기 정상, 2번 로그에 "전체 굽기 시간", 1번 `ops/m0.sh character`에서 스왑 없음
+6. 되돌리기: 추가한 블록 3개를 지우고 `sudo nginx -t && sudo systemctl reload nginx`(Python 코드가 남아 있어 바로 돌아감)
+
+2026-11-17 결과: 12:02 KST 전환(2번 로그에 `preview -> 403` 확인). 백엔드 `main` 배포 뒤 사이트에서 새 캐릭터(623) 생성 → 전체 굽기 101.3초(M0 Python 524.5초), 36개 중 33개 성공·개당 28~36초 1회 시도. 실패 3개(itemSn 49·51·53, 그림 참고 굽기)는 1초 안에 `BackendError`(OpenAI 전 Java 호출, 원인 확인 남음). 굽기 뒤 RSS 57MB, `free` available 510MB / 952MB, PID 그대로(재시작·OOM 없음). 2번은 스왑이 없어 메모리가 모자라면 느려지지 않고 OOM으로 죽는다 → 굽기 중 최대값은 `systemctl show nyangmeong-character -p MemoryPeak`로 잰다. 2번 시계는 UTC.
+
 ## 알려진 차이
 
 실사용에서 거의 안 나는 것만 둔다. 새로 생기면 여기에 적는다.
@@ -116,11 +131,12 @@
 - 굽기 큐 일꾼 수: 여기는 잠금 안에서 일꾼 수를 먼저 올려 동시에 굽는 수가 늘 13(`BAKE_CONCURRENCY`) 이하다. Python은 `_work`가 처음 돌 때 수를 올려, 한 틈에 `drain`이 두 번 불리면 상한을 넘는다(검증 에이전트 실측: 작업 20개에 `gather(drain(), drain())` → 동시 20). 굽는 결과·Java 보고는 같고 OpenAI 동시 호출 수만 다르다
 - 굽기 중 패닉: Python은 `_bake_one`의 예외를 `except Exception`으로 받고 같은 일꾼이 다음 작업을 꺼낸다. 여기는 패닉한 일꾼이 끝난다(굽는 중 표시 정리·대기자 알림·일꾼 수 줄이기는 Drop이 함). 남은 작업은 다른 일꾼이나 다음 `drain`이 꺼낸다. 패닉은 코드 결함일 때만 나고(이미지 계산의 패닉은 `heavy`가 오류로 바꿈) 일반 실패는 Python처럼 결과(`None`·실패 표시)로 돌아온다
 - 요청이 끊겼을 때(시험 안 함, hyper·uvicorn 동작에서 추정): axum은 연결이 끊기면 핸들러 future를 버린다. 전체 굽기는 일꾼이 따로 돌아 굽기·Java 보고는 끝까지 가고 응답만 안 간다(uvicorn은 핸들러를 끝까지 돈다). 미리보기·생성 경로는 응답 전에 끊기면 그 뒤 일(작업 생성 등)을 안 한다
+- OpenAI 429 사유 로그: 429가 마지막 오류로 돌아갈 때 본문의 `error.code`(예: `insufficient_quota`, 1~64자 영숫자·`_`·`-`·`.`만)를 `WARNING app.character.clients - OpenAI 429 사유: <code>` 한 줄로 더 남긴다(크레딧 부족 알림, 2026-11-18 결정). Python은 `RateLimitError`만 남긴다. 응답·Java 보고·OpenAI 요청 횟수는 같다
 
 - 정수는 i64까지(Python은 무제한 → Java가 4xx)
 - `json.loads`의 UTF-16·NaN·Infinity 미지원
 - multipart 비정상 본문 세부(multer와 python-multipart)
-- 로그는 날짜별 파일 대신 journald
+- 로그: 원본처럼 `LOG_DIR` 날짜별 파일(30일 보관)에 `app.*`를 쓰고 콘솔(journald)에도 남긴다. 파일 이름 접두사는 `ai_` 대신 `character_`(1번 Python 파일과 구별). 2번은 systemd `TZ=Asia/Seoul`로 파일 날짜·시각이 한국 시각. 파일에 남는 기동·오류 줄은 uvicorn 메시지 대신 `INFO app.main - listening on <주소>`·`ERROR app.main - panic: <내용>`. 폴더를 못 열 때 경고 끝의 오류 문구는 러스트 `io::Error` 문자열
 - 307 Location의 scheme은 `X-Forwarded-Proto`(없으면 http)
 - 이미지 PNG의 바이트(압축)는 Pillow(`optimize=True`)와 다르고 디코드한 화소는 같다. 색 형식(RGB·RGBA)은 같다
 - `normalize_photo`·`normalize_item_image`: PNG(8비트·팔레트·회색·RGBA·EXIF 방향)는 Pillow와 화소까지 같다. JPEG·손실 WebP는 디코더(Pillow는 libjpeg-turbo·libwebp, 여기는 zune-jpeg·image-webp)가 달라 화소가 조금 다르다(크기·방향은 같음). 손실 없는 WebP는 같다. 사진 방향은 EXIF 청크만 읽는다(Pillow는 없으면 PNG `Raw profile type exif` 텍스트 청크와 XMP `tiff:Orientation`도 본다 → 거기에만 방향이 적힌 사진은 누운 채로 남는다). 결과는 OpenAI 입력으로만 쓴다
@@ -143,11 +159,11 @@
 
 - 2번 서비스는 `BACKEND_BASE_URL`이 비면 `/ai/**`를 전부 502로 답한다(Python과 같음). 경로를 쓰기 전에 시크릿 `ENV_FILE`에 `BACKEND_BASE_URL=http://10.0.0.41:8080`을 넣고 다시 배포한다
 - 대조 테스트(`contract/`)는 FastAPI·Starlette·pydantic 버전에 묶여 있다. `nyangmeong-ai` 의존성이 바뀌면 다시 돌린다
-- 굽기 큐는 프로세스 메모리에 있다. 7개 경로는 nginx에서 한 번에 넘긴다. 전환 전 Python에서 돌던 굽기가 끝났는지 확인하고 넘긴다
+- 굽기 큐는 프로세스 메모리에 있다. 8개 경로(M5에서 무료 재생성 추가)는 nginx에서 한 번에 넘긴다. 전환 전 Python에서 돌던 굽기가 끝났는지 확인하고 넘긴다
 - OpenAI 키는 2번에만 둔다. 저장소·로그에 남기지 않는다. systemd `EnvironmentFile`(권한 600)로 넣는다
 - 2번 8100에는 인증 없이 들어오는 길이 없어야 한다: nginx(1번 사설 IP)만 닿게 보안 목록 + iptables 둘 다. 인증 확인은 러스트가 매 요청 Java에 묻는다(캐시 없음)
 - 2번도 RAM 1GB다. 큰 계산 동시 수를 제한하지 않으면 1번과 같은 스래싱이 2번에서 난다. M4에서 RSS·swap을 잰다
-- nginx(1번): 기존 `/ai`가 접두사 규칙인지 먼저 확인(`sudo nginx -T | grep -n location`). 정규식(`~`)이면 새 블록이 안 먹는다. `location /ai/characters`(끝 `/` 없이)와 `location /ai/items/`. `proxy_set_header`·timeout·`client_max_body_size`는 기존 `/ai` 블록에서 그대로 복사. `pixel-image`는 30~40초, `/ai/items/{itemSn}/bake`는 한 묶음을 다 굽고 답하므로 더 길다 — Python 로그로 묶음 시간을 확인해 timeout을 정한다
+- nginx(1번): 기존 `/ai`가 접두사 규칙인지 먼저 확인(`sudo nginx -T | grep -n location`). 정규식(`~`)이면 새 블록이 안 먹는다. `location /ai/characters`(끝 `/` 없이)·`location /ai/admin/characters/`·`location /ai/items/` 3개. `proxy_set_header`·timeout·`client_max_body_size`는 기존 `/ai` 블록에서 그대로 복사. `pixel-image`는 30~40초, `/ai/items/{itemSn}/bake`는 한 묶음을 다 굽고 답하므로 더 길다 — Python 로그로 묶음 시간을 확인해 timeout을 정한다
 - 계약(`ApiResponse`, 오류 코드 `FORBIDDEN`·`ITEM_BAKING`·`INVALID_REQUEST`·502, 캐릭터 규격 512×512·얼굴 영역, 시트 1024)은 `nyangmeong-ai`·백엔드·프론트와 같아야 한다. 어긋나면 오류 없이 조용히 깨진다. 백엔드·프론트 팀원에게 캐릭터·아이템 경로가 러스트로 간다고 알린다
 - Java 내부 API는 `/internal/**` POST에도 `X-Requested-With`를 요구한다. 응답 뒤 백그라운드 호출은 요청 때 복사한 쿠키를 쓰므로, 쿠키가 만료되면 Java가 401(보고 실패로 남음, 작업은 Java 타임아웃으로 정리)
 - `scipy.ndimage.label`·`binary_erosion`·`binary_propagation`의 이웃 정의(4/8방향)·반올림, float64→정수 변환이 다르면 테두리가 달라진다. M3는 정답 비교 테스트부터 만든다. 정답 파일은 M0 측정용 캐릭터의 시트를 받아 쓴다(저장소에 커밋하지 않음)

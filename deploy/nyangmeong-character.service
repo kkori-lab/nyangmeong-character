@@ -7,6 +7,12 @@ Wants=network-online.target
 User=nmchar
 Group=nmchar
 Environment=PORT=8100
+# 날짜별 로그 파일(M7) : systemd가 /var/log/nyangmeong-character를 nmchar 소유 2770으로 만든다(ProtectSystem=strict에서도 쓸 수 있음)
+LogsDirectory=nyangmeong-character
+LogsDirectoryMode=2770
+Environment=LOG_DIR=/var/log/nyangmeong-character
+# 2번 시계는 UTC : 로그 파일 날짜·줄 시각을 한국 시각으로
+Environment=TZ=Asia/Seoul
 # OpenAI 키 등 비밀값 (M4부터, root 소유 600). 없어도 시작한다
 EnvironmentFile=-/etc/nyangmeong-character.env
 ExecStart=/opt/nyangmeong-character/nyangmeong-character
