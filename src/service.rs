@@ -319,21 +319,27 @@ pub async fn regenerate_and_report<C, R>(
 {
     let job = match repo.regen_start(char_crt_job_sn).await {
         Ok(job) => job,
-        Err(_) => {
+        Err(error) => {
             // 이미 처리 중(409)·REGEN 작업 아님(404) 등 : 보고할 곳이 없어 Java 시간 초과 배치가 정리
             logs::error(
                 LOGGER,
-                format!("재생성 시작 실패: charCrtJobSn={char_crt_job_sn}"),
+                format!(
+                    "재생성 시작 실패: charCrtJobSn={char_crt_job_sn}: {}",
+                    cause(&error)
+                ),
             );
             return;
         }
     };
     let photo = match repo.fetch_original_photo(char_crt_job_sn).await {
         Ok(photo) => photo,
-        Err(_) => {
+        Err(error) => {
             logs::error(
                 LOGGER,
-                format!("재생성 원본 사진 조회 실패: charCrtJobSn={char_crt_job_sn}"),
+                format!(
+                    "재생성 원본 사진 조회 실패: charCrtJobSn={char_crt_job_sn}: {}",
+                    cause(&error)
+                ),
             );
             report_failure(&*repo, &job, CharacterFailure::InputError).await;
             return;
