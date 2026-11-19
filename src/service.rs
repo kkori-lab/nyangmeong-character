@@ -24,6 +24,18 @@ use crate::response::AppError;
 
 const LOGGER: &str = "app.character.service";
 
+/// 로그용 실패 이유 한 줄 : Java 4xx는 상태 숫자, AppError는 오류 코드(본문·쿠키·경로 숫자는 남기지 않음)
+/// 원본은 traceback 마지막 줄에 예외 이름만 남긴다(`migration.md` "알려진 차이")
+pub fn cause(error: &ApiError) -> String {
+    match error {
+        ApiError::App(e) => e.code.clone(),
+        ApiError::Backend(e) => format!("Java {}", e.status_code),
+        ApiError::Validation => "Validation".into(),
+        ApiError::Http { status, .. } => format!("HTTP {status}"),
+        ApiError::Internal => "Internal".into(),
+    }
+}
+
 pub fn check_region(regn_cd: &str) -> Result<(), ApiError> {
     if engine::is_bake_region(regn_cd) {
         return Ok(());
@@ -307,21 +319,27 @@ pub async fn regenerate_and_report<C, R>(
 {
     let job = match repo.regen_start(char_crt_job_sn).await {
         Ok(job) => job,
-        Err(_) => {
+        Err(error) => {
             // 이미 처리 중(409)·REGEN 작업 아님(404) 등 : 보고할 곳이 없어 Java 시간 초과 배치가 정리
             logs::error(
                 LOGGER,
-                format!("재생성 시작 실패: charCrtJobSn={char_crt_job_sn}"),
+                format!(
+                    "재생성 시작 실패: charCrtJobSn={char_crt_job_sn}: {}",
+                    cause(&error)
+                ),
             );
             return;
         }
     };
     let photo = match repo.fetch_original_photo(char_crt_job_sn).await {
         Ok(photo) => photo,
-        Err(_) => {
+        Err(error) => {
             logs::error(
                 LOGGER,
-                format!("재생성 원본 사진 조회 실패: charCrtJobSn={char_crt_job_sn}"),
+                format!(
+                    "재생성 원본 사진 조회 실패: charCrtJobSn={char_crt_job_sn}: {}",
+                    cause(&error)
+                ),
             );
             report_failure(&*repo, &job, CharacterFailure::InputError).await;
             return;
@@ -378,13 +396,14 @@ pub async fn generate_and_report<C, R>(
         .await;
     let pixel_char_sn = match reported {
         Ok(sn) => sn,
-        Err(_) => {
+        Err(error) => {
             // 보고 실패로 멈춘 작업은 Java가 타임아웃으로 정리
             logs::error(
                 LOGGER,
                 format!(
-                    "캐릭터 성공 보고 실패: charCrtJobSn={}",
-                    job.char_crt_job_sn
+                    "캐릭터 성공 보고 실패: charCrtJobSn={}: {}",
+                    job.char_crt_job_sn,
+                    cause(&error)
                 ),
             );
             return;
@@ -393,10 +412,13 @@ pub async fn generate_and_report<C, R>(
     // FN-MYP-011-01 : 사자마자 입도록 전 아이템 미리 굽기
     let targets = match repo.list_bake_items().await {
         Ok(targets) => targets,
-        Err(_) => {
+        Err(error) => {
             logs::error(
                 LOGGER,
-                format!("굽기 대상 조회 실패: pixelCharSn={pixel_char_sn}"),
+                format!(
+                    "굽기 대상 조회 실패: pixelCharSn={pixel_char_sn}: {}",
+                    cause(&error)
+                ),
             );
             return;
         }
@@ -729,5 +751,26 @@ mod tests {
 
         assert_eq!(external(error), (502, "EXTERNAL_API_ERROR".into()));
         assert!(queue.pending().is_empty());
+    }
+
+    #[test]
+    fn cause_names_backend_status_and_app_code() {
+        use crate::backend::BackendError;
+        let backend = ApiError::from(BackendError {
+            status_code: 403,
+            body: Bytes::from_static(b"{\"code\":\"FORBIDDEN\"}"),
+            content_type: None,
+            set_cookies: Vec::new(),
+        });
+        assert_eq!(cause(&backend), "Java 403");
+        assert_eq!(cause(&external_error().into()), "EXTERNAL_API_ERROR");
+        assert_eq!(cause(&ApiError::Internal), "Internal");
+        assert_eq!(cause(&ApiError::Validation), "Validation");
+        let http = ApiError::Http {
+            status: 405,
+            detail: "Method Not Allowed".into(),
+            allow: None,
+        };
+        assert_eq!(cause(&http), "HTTP 405");
     }
 }
