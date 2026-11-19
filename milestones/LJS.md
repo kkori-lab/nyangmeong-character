@@ -66,3 +66,9 @@
 - 완료 조건: 명령: `sh scripts/check.sh`(사유 읽기 단위 테스트, 429 통합 테스트, 대조 사례 `bake-hints 429 insufficient_quota`) / 화면: 가짜 OpenAI가 `insufficient_quota` 429를 주게 하고 `LOG_DIR`를 켠 서버에 bake-hints 요청 → 로그 파일에 사유 줄 1개와 기존 실패 줄
 - 결과: 검증 1회차 통과, 대조 120/120, 사람 확인(2026-11-18)
 - 연결 남음: 2번 사유 로그 확인 (다음 실제 크레딧 소진, LJS)
+
+## M10 .bat 줄바꿈 CRLF 고정 (.gitattributes) — 끝
+- 기능: `.gitattributes`에 `*.bat text eol=crlf` 한 줄(백엔드 저장소와 같게). `core.autocrlf`가 꺼진 Windows 클론에서도 `setup.bat`이 CRLF로 풀려 `goto`·라벨이 어긋나지 않게
+- 원본: 백엔드 저장소 `.gitattributes`(`*.bat text eol=crlf`). Python 코드를 옮기는 일이 아님
+- 완료 조건: 명령: `sh scripts/check.sh`, `git ls-files --eol setup.bat`이 `i/lf`·`attr/text eol=crlf`, `git add --renormalize .` 뒤 바뀐 파일 없음 / 화면: `git -c core.autocrlf=false clone`한 임시 폴더의 `setup.bat`이 CRLF, `setup.sh`는 LF
+- 결과: 검증 1회차 통과, 사람 확인(2026-11-19)

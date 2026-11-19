@@ -2,14 +2,13 @@
 
 ## 지금 하는 것
 
-M9 OpenAI 429 사유 로그 (크레딧 부족 알림) — 끝 (검증 통과 1회차, 사람 확인 2026-11-18, 대조 120/120). `src/clients.rs` `post`에서 429가 마지막 오류일 때 본문 `error.code`를 `WARNING app.character.clients - OpenAI 429 사유: <code>`로 한 줄 남김(`quota_code`가 1~64자 영숫자·`_-.`만). 응답·재시도·기존 `RateLimitError` 줄은 그대로, `migration.md` "알려진 차이"에 적음. 다음은 대기 맨 위
+M10 .bat 줄바꿈 CRLF 고정 (.gitattributes) — 끝 (검증 통과 1회차, 사람 확인 2026-11-19). `.gitattributes`에 `*.bat text eol=crlf`(백엔드와 같게). `core.autocrlf=false` 클론에서도 `setup.bat`은 CRLF, `setup.sh`는 LF. 다음은 대기 맨 위
 
 ## 다음에 할 것
 
 - 연결 남음: M9 2번 사유 로그 — 다음 실제 크레딧 소진 때 2번 `/var/log/nyangmeong-character/character_<날짜>.log`에 `OpenAI 429 사유: insufficient_quota` 줄이 `… 실패: RateLimitError` 바로 앞에 나오는지 (LJS)
 - 연결 남음: M8 맥 확인 — 맥 터미널에서 `bash setup.sh` → rustup이 없으면 sh.rustup.rs로 설치·`~/.zshrc`에 `~/.cargo/bin` PATH, 끝에 `[완료] 서버 기동`, 두 번째 실행 종료 코드 0. Windows 더블클릭 시 끝에서 창이 멈추는지도 (LJS)
 - 연결 남음: M8 백엔드·프론트 `setup.sh`·`setup.bat` 머리 주석 "고칠 때 둘 다" → "셋 다(캐릭터 포함)" (백엔드·프론트 저장소에서 /start)
-- `.gitattributes`에 `*.bat text eol=crlf` 추가(백엔드와 같게). 지금은 `core.autocrlf=true` PC에서만 CRLF로 받는다. autocrlf가 꺼진 Windows 클론이면 LF .bat가 되어 `goto`·라벨이 어긋날 수 있다(검증 비고)
 - `setup.sh` 공통 절 주석 "그 도구에 MCP를 등록한다"는 이 저장소에서 맞지 않음(백엔드 그대로 옮김). 공통 절을 셋이 같이 고칠 때 정리
 - 연결 남음: M7 2번 로그 폴더 — 배포 뒤 `ls -ld /var/log/nyangmeong-character; ls -l /var/log/nyangmeong-character`(폴더 `drwxrws---`, 파일 `-rw-rw---- nmchar`), `curl -s http://127.0.0.1:8100/health; tail -n 3 /var/log/nyangmeong-character/character_$(TZ=Asia/Seoul date +%F).log`에 `INFO app.request - GET /health -> 200`, 줄 시각이 한국 시각 (LJS)
 - 연결 남음: M6 굽기 중 최대 메모리 — 2번에서 `systemctl show nyangmeong-character -p MemoryPeak`·`journalctl -k | grep -i oom` 결과를 `migration.md` "M6 전환 절차" 결과 줄에 (LJS)
