@@ -132,6 +132,7 @@
 - 굽기 중 패닉: Python은 `_bake_one`의 예외를 `except Exception`으로 받고 같은 일꾼이 다음 작업을 꺼낸다. 여기는 패닉한 일꾼이 끝난다(굽는 중 표시 정리·대기자 알림·일꾼 수 줄이기는 Drop이 함). 남은 작업은 다른 일꾼이나 다음 `drain`이 꺼낸다. 패닉은 코드 결함일 때만 나고(이미지 계산의 패닉은 `heavy`가 오류로 바꿈) 일반 실패는 Python처럼 결과(`None`·실패 표시)로 돌아온다
 - 요청이 끊겼을 때(시험 안 함, hyper·uvicorn 동작에서 추정): axum은 연결이 끊기면 핸들러 future를 버린다. 전체 굽기는 일꾼이 따로 돌아 굽기·Java 보고는 끝까지 가고 응답만 안 간다(uvicorn은 핸들러를 끝까지 돈다). 미리보기·생성 경로는 응답 전에 끊기면 그 뒤 일(작업 생성 등)을 안 한다
 - OpenAI 429 사유 로그: 429가 마지막 오류로 돌아갈 때 본문의 `error.code`(예: `insufficient_quota`, 1~64자 영숫자·`_`·`-`·`.`만)를 `WARNING app.character.clients - OpenAI 429 사유: <code>` 한 줄로 더 남긴다(크레딧 부족 알림, 2026-11-18 결정). Python은 `RateLimitError`만 남긴다. 응답·Java 보고·OpenAI 요청 횟수는 같다
+- 생성 뒤 Java 실패 이유 로그: `캐릭터 성공 보고 실패`·`굽기 대상 조회 실패` 줄 끝에 `: <이유>`를 붙인다. Java 4xx는 `Java <상태>`(예: `Java 403`), 502(연결·5xx·응답 모양 다름)는 `EXTERNAL_API_ERROR`. 본문·쿠키·경로 숫자는 남기지 않는다(2026-11-19). Python은 traceback 마지막 줄에 `BackendError`·`AppError`만 남긴다. 응답·Java 요청·굽기 흐름은 같다
 
 - 정수는 i64까지(Python은 무제한 → Java가 4xx)
 - `json.loads`의 UTF-16·NaN·Infinity 미지원

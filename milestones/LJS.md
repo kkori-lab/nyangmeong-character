@@ -72,3 +72,9 @@
 - 원본: 백엔드 저장소 `.gitattributes`(`*.bat text eol=crlf`). Python 코드를 옮기는 일이 아님
 - 완료 조건: 명령: `sh scripts/check.sh`, `git ls-files --eol setup.bat`이 `i/lf`·`attr/text eol=crlf`, `git add --renormalize .` 뒤 바뀐 파일 없음 / 화면: `git -c core.autocrlf=false clone`한 임시 폴더의 `setup.bat`이 CRLF, `setup.sh`는 LF
 - 결과: 검증 1회차 통과, 사람 확인(2026-11-19)
+
+## M11 로그·주석 정리 (굽기 대상 조회 실패 이유·setup.sh MCP 주석) — 끝
+- 기능: `src/service.rs` 생성 뒤 `굽기 대상 조회 실패`·`캐릭터 성공 보고 실패` 로그에 이유 한 줄(Java 4xx 상태·응답 모양 다름·502, 성공 보고는 2026-11-19 결정 (나)), `setup.sh` 공통 절 AI 도구 주석에서 "MCP를 등록한다" 정리
+- 원본: `nyangmeong-ai` `app/character/service.py`(`logger.exception`, traceback 마지막 줄에 예외 이름만 → 원본에 없는 이유를 더함, `migration.md` "알려진 차이"). setup.sh는 Python 코드를 옮기는 일이 아님
+- 완료 조건: 명령: `sh scripts/check.sh`(이유 단위·통합 테스트), `bash -n setup.sh` / 화면: 가짜 Java가 `bake-items`에 403을 주게 하고 `LOG_DIR`를 켠 서버에 캐릭터 생성 → 로그에 이유가 붙은 줄 1개
+- 결과: 검증 1회차 통과, 대조 그대로 통과, 사람 확인(2026-11-19, 가짜 Java 403 → `굽기 대상 조회 실패: pixelCharSn=77: Java 403`)
