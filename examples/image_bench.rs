@@ -1,9 +1,9 @@
-//! 이미지 계산 측정 : 같은 시트로 `stand_front_cut`·`place`·`validate`·`render`의 실행 시간과 최대 힙을 잰다
+//! 이미지 계산 측정 : 같은 시트로 `stand_front_cut`·`place`·`validate`·`render`의 실행 시간과 최대 힙 측정
 //!
 //! 사용: cargo run --release --example image_bench -- <시트 폴더> [반복 횟수=3]
-//! - 시트 폴더: `bare.png`, `worn_<부위코드>.png` (`contract/image_bench.py`가 같은 폴더·같은 작업을 Python으로 잰다)
+//! - 시트 폴더: `bare.png`, `worn_<부위코드>.png` (`contract/image_bench.py`가 같은 폴더·같은 작업을 Python으로 측정)
 //! - 힙 : 이 프로그램의 전역 할당자가 센 값(작업 시작 시점 대비 최고치). 프로세스 전체(RSS)는 `/usr/bin/time -v`의 "Maximum resident set size"
-//! - 서버에서는 Actions가 빌드한 실행 파일을 쓴다(서버에서 `cargo build`를 하지 않는다)
+//! - 서버에서는 Actions가 빌드한 실행 파일 사용(서버에서 `cargo build`를 하지 않음)
 
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::collections::HashMap;
@@ -23,7 +23,7 @@ fn grow(bytes: usize) {
     PEAK.fetch_max(now, Relaxed);
 }
 
-// SAFETY: 모든 요청을 `System`에 그대로 넘기고 크기만 센다
+// SAFETY: 모든 요청을 `System`에 그대로 넘기고 크기만 셈
 unsafe impl GlobalAlloc for Counting {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
         let pointer = unsafe { System.alloc(layout) };

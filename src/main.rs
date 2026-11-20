@@ -18,7 +18,7 @@ async fn main() {
     let settings = Settings::from_env();
     // create_app 첫 줄 logs.configure : 다른 로그보다 먼저
     logs::configure(&settings.log_dir, Box::new(logs::local_today));
-    // uvicorn.error처럼 처리 안 된 오류(패닉)도 파일에 남긴다 : 기본 출력 뒤 한 줄
+    // uvicorn.error처럼 처리 안 된 오류(패닉)도 파일에 남김 : 기본 출력 뒤 한 줄
     let default_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
         default_hook(info);
@@ -31,12 +31,12 @@ async fn main() {
             "BACKEND_BASE_URL이 비어 있어 /ai/** 가 502로 답한다",
         );
     }
-    // Bind all interfaces: nginx on instance 1 reaches us via the private IP
+    // 모든 인터페이스에 바인드 : 1번 인스턴스의 nginx가 사설 IP로 접근
     let addr = SocketAddr::from(([0, 0, 0, 0], port()));
     let listener = tokio::net::TcpListener::bind(addr)
         .await
         .expect("failed to bind port");
-    // PORT=0(setup.sh 확인)이면 OS가 고른 실제 포트를 적는다
+    // PORT=0(setup.sh 확인)이면 OS가 고른 실제 포트 기록
     let addr = listener.local_addr().unwrap_or(addr);
     logs::info("app.main", format!("listening on {addr}"));
     axum::serve(listener, app(AppState::new(settings)))

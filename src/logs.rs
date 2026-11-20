@@ -1,5 +1,5 @@
 //! `app/core/logs.py` 콘솔 형식 `%(levelname)s:     %(name)s - %(message)s`, `configure`로 LOG_DIR을 주면
-//! `app.*` 로그를 `LOG_DIR/character_YYYY-MM-DD.log`에도 쓴다(`DailyFileHandler`, 30일 보관). systemd는 stderr를 journald에 남긴다
+//! `app.*` 로그를 `LOG_DIR/character_YYYY-MM-DD.log`에도 씀(`DailyFileHandler`, 30일 보관). systemd는 stderr를 journald에 남김
 
 use std::fmt::Display;
 use std::fs::{self, File, OpenOptions};
@@ -9,7 +9,7 @@ use std::sync::{Mutex, MutexGuard};
 
 use chrono::{Local, NaiveDate, TimeDelta, Weekday};
 
-/// 원본은 `ai_` : 1번 Python 파일과 구별한다(migration.md "알려진 차이")
+/// 원본은 `ai_` : 1번 Python 파일과 구별(migration.md "알려진 차이")
 pub const FILE_PREFIX: &str = "character_";
 pub const KEEP_DAYS: i64 = 30;
 pub const FILE_MODE: u32 = 0o660;
@@ -17,10 +17,10 @@ pub const DIR_MODE: u32 = 0o2770;
 
 const LOGGER: &str = "app.logs";
 
-/// 오늘 날짜(서버 지역 시각) : 테스트는 바꿔 끼운다
+/// 오늘 날짜(서버 지역 시각) : 테스트는 바꿔 끼움
 pub type Today = Box<dyn Fn() -> NaiveDate + Send>;
 
-/// 프로세스 하나라 파일 잠금 대신 Mutex로 한 줄씩 쓴다
+/// 프로세스 하나라 파일 잠금 대신 Mutex로 한 줄씩 씀
 static FILE: Mutex<Option<DailyFile>> = Mutex::new(None);
 
 pub fn local_today() -> NaiveDate {
@@ -76,7 +76,7 @@ impl DailyFile {
     }
 
     fn switch(&mut self, day: NaiveDate) -> io::Result<()> {
-        // 새 파일을 연 뒤 이전 파일을 닫는다(대입하면 이전 File이 닫힘)
+        // 새 파일을 연 뒤 이전 파일을 닫음(대입하면 이전 File이 닫힘)
         self.file = open_day(&self.folder, day)?;
         self.day = day;
         remove_old_files(&self.folder, day);
@@ -228,7 +228,7 @@ pub fn configure(log_dir: &str, today: Today) {
     }
 }
 
-/// 폴더를 못 열면 남길 경고 문구를 돌려준다(콘솔에만 남음 : 그 전에 파일을 닫음)
+/// 폴더를 못 열면 남길 경고 문구를 돌려줌(콘솔에만 남음 : 그 전에 파일을 닫음)
 fn try_configure(log_dir: &str, today: Today) -> Option<String> {
     *file_guard() = None;
     if log_dir.is_empty() {

@@ -1,5 +1,5 @@
 //! `clients.py` OpenAiClient : `generate`(눈 판별 → 시트 생성 → 서기 정면 배치)·그림 참고 굽기·시간 초과 재시도.
-//! 가짜 OpenAI를 이 PC의 임시 포트에 띄운다(실제 OpenAI는 부르지 않는다). 요청 모양의 Python 대조는 `contract/`가 맡는다.
+//! 가짜 OpenAI를 이 PC의 임시 포트에 띄움(실제 OpenAI는 부르지 않음). 요청 모양의 Python 대조는 `contract/`가 맡음
 
 use std::sync::{Arc, Mutex};
 use std::time::Duration;

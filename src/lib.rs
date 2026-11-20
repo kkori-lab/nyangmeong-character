@@ -1,4 +1,4 @@
-//! 냥멍케어 캐릭터 서버 : `nyangmeong-ai` `app/character/`를 그대로 옮긴다
+//! 냥멍케어 캐릭터 서버 : `nyangmeong-ai` `app/character/`를 그대로 옮김
 
 pub mod app;
 pub mod auth;

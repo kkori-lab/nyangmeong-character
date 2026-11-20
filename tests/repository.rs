@@ -1,5 +1,5 @@
-//! `app/character/repository.py` 옮김 확인 : 원본 `tests/character/test_repository.py`의 사례를 그대로 옮겼다.
-//! httpx `MockTransport` 대신 이 PC의 임시 포트에 가짜 Java를 띄운다(기대값은 원본 테스트 그대로).
+//! `app/character/repository.py` 옮김 확인 : 원본 `tests/character/test_repository.py`의 사례를 그대로 옮김
+//! httpx `MockTransport` 대신 이 PC의 임시 포트에 가짜 Java를 띄움(기대값은 원본 테스트 그대로).
 
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
@@ -67,7 +67,7 @@ async fn record(State(mock): State<Mock>, request: Request) -> Response {
         .unwrap()
 }
 
-/// 가짜 Java를 띄우고 그쪽을 보는 저장소와 받은 요청 기록을 돌려준다
+/// 가짜 Java를 띄우고 그쪽을 보는 저장소와 받은 요청 기록을 돌려줌
 async fn make_repo(
     handler: impl Fn(&Recorded) -> (u16, Vec<u8>) + Send + Sync + 'static,
 ) -> (JavaRepository, Arc<Mutex<Vec<Recorded>>>) {
@@ -134,7 +134,7 @@ fn status_of(error: &ApiError) -> u16 {
     }
 }
 
-// 호출마다 경로·메서드·쿠키 : 모두 쿠키를 보낸다(Java 쿠키 인증)
+// 호출마다 경로·메서드·쿠키 : 모두 쿠키를 보냄(Java 쿠키 인증)
 
 #[tokio::test]
 async fn create_job_sends_cookie_and_returns_registration() {

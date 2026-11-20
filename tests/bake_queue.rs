@@ -1,6 +1,6 @@
-//! `service.py` 굽기 큐(`BakeQueue`·`_bake_one`·`_draw`·`bake_item_batch`) : 가짜 생성기·가짜 저장소로 확인한다.
-//! 원본 `tests/character/test_bake.py`의 큐 사례를 옮기고, 러스트에서 새로 생긴 동시성(잠금 하나)을 더 본다.
-//! 로그 문구 사례(`굽기 시간`·`전체 굽기 시간`)는 stderr라 여기서 잡지 않는다
+//! `service.py` 굽기 큐(`BakeQueue`·`_bake_one`·`_draw`·`bake_item_batch`) : 가짜 생성기·가짜 저장소로 확인
+//! 원본 `tests/character/test_bake.py`의 큐 사례를 옮기고, 러스트에서 새로 생긴 동시성(잠금 하나)을 더 확인
+//! 로그 문구 사례(`굽기 시간`·`전체 굽기 시간`)는 stderr라 여기서 잡지 않음
 
 mod common;
 
@@ -30,7 +30,7 @@ fn three_items() -> Vec<BakeItem> {
     ]
 }
 
-/// 원본 `run` : 작업 1번을 생성·보고하고 전 아이템을 굽는다
+/// 원본 `run` : 작업 1번을 생성·보고하고 전 아이템 굽기
 async fn run(client: FakeClient, repo: FakeRepo) -> (Arc<FakeClient>, Arc<FakeRepo>) {
     let (client, repo) = (Arc::new(client), Arc::new(repo));
     repo.insert(SavedJob::new(job(1, "PETC0001"), 3));

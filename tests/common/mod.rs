@@ -1,6 +1,6 @@
 //! 굽기 큐·회원 경로 테스트가 같이 쓰는 가짜 : 원본 `tests/character/fakes.py`의 `FakeCharacterJobRepository`와
-//! `test_bake.py`·`test_create.py`의 가짜 생성기를 옮겼다. 판정은 Java 몫이라 메모리 기록만 한다.
-//! 시트는 원본처럼 그려 만들지 않고 `tests/fixtures/image/sheets`의 합성 시트를 쓴다(부위별 착용 시트가 있음)
+//! `test_bake.py`·`test_create.py`의 가짜 생성기를 옮김. 판정은 Java 몫이라 메모리 기록만 함
+//! 시트는 원본처럼 그려 만들지 않고 `tests/fixtures/image/sheets`의 합성 시트 사용(부위별 착용 시트가 있음)
 
 #![allow(dead_code)]
 
