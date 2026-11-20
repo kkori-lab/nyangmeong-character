@@ -1,5 +1,5 @@
 //! `app/core/response.py` : 백엔드 ApiResponse와 같은 응답 껍데기
-//! `{timestamp, status, httpCode, message, path?, code?, data?}` 순서, None인 칸은 뺀다
+//! `{timestamp, status, httpCode, message, path?, code?, data?}` 순서, None인 칸은 제외
 
 use axum::http::{HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
@@ -66,7 +66,7 @@ fn build(
     if let Some(code) = code {
         body.insert("code".into(), Value::String(code.into()));
     }
-    // Python은 None만 뺀다 : data가 JSON null이어도 뺀다
+    // Python은 None만 제외 : data가 JSON null이어도 제외
     if let Some(data) = data.filter(|d| !d.is_null()) {
         body.insert("data".into(), data);
     }

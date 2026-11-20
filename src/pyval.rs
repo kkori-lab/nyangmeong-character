@@ -1,8 +1,8 @@
-//! pydantic(2.14, lax)·Python 내장 `int()`의 값 변환을 그대로 옮긴다
+//! pydantic(2.14, lax)·Python 내장 `int()`의 값 변환을 그대로 옮김
 //! 규칙은 `nyangmeong-ai` 가상환경에서 직접 확인한 결과(2026-11-16)
 //!
-//! 알려진 차이: Python 정수는 크기 제한이 없지만 여기는 i64까지다.
-//! i64 밖 값은 Python이면 Java로 넘어가 Java가 4xx로 막고, 여기서는 검증 오류(400)다.
+//! 알려진 차이: Python 정수는 크기 제한이 없지만 여기는 i64까지
+//! i64 밖 값은 Python이면 Java로 넘어가 Java가 4xx로 막고, 여기서는 검증 오류(400)
 
 use serde_json::Value;
 

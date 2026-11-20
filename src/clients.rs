@@ -1,10 +1,10 @@
 //! `app/character/clients.py` : OpenAI 호출 (눈 판별·시트 생성·아이템 굽기·굽기 지시 초안·픽셀 아이템 그림)
 //!
-//! Python은 `openai` SDK(3.42.1)를 쓴다. 여기는 같은 요청을 reqwest로 보낸다.
+//! Python은 `openai` SDK(3.42.1) 사용. 여기는 같은 요청을 reqwest로 보냄
 //! - SDK와 같게: 제한 시간 `CHARACTER_TIMEOUT_SEC`(연결·읽기 각각), `max_retries=1`(연결 실패·시간 초과·408·409·429·5xx를
 //!   한 번 더, `x-should-retry`·`retry-after(-ms)` 따름, 기본 대기 0.375~0.5초)
-//! - 차이: 큰 이미지 계산은 `heavy`(동시 수 `HEAVY_CONCURRENCY`)로 돌린다. Python은 `asyncio.to_thread` 기본 풀을 쓴다.
-//!   결과는 같고 동시에 도는 수만 다르다(2번 서버는 RAM 1GB)
+//! - 차이: 큰 이미지 계산은 `heavy`(동시 수 `HEAVY_CONCURRENCY`)로 돌림. Python은 `asyncio.to_thread` 기본 풀 사용
+//!   결과는 같고 동시에 도는 수만 다름(2번 서버는 RAM 1GB)
 
 use std::future::Future;
 use std::time::Duration;
@@ -30,7 +30,7 @@ const MAX_RETRIES: u32 = 1;
 
 static HEAVY: Semaphore = Semaphore::const_new(HEAVY_CONCURRENCY);
 
-/// 큰 계산 : 동시 수를 제한하고 막는 일꾼 스레드에서 돌린다. 계산 중 패닉은 `Err`(Python이면 예외)
+/// 큰 계산 : 동시 수를 제한하고 막는 일꾼 스레드에서 돌림. 계산 중 패닉은 `Err`(Python이면 예외)
 pub async fn heavy<T: Send + 'static>(
     job: impl FnOnce() -> T + Send + 'static,
 ) -> Result<T, String> {
@@ -154,7 +154,7 @@ impl OpenAiClient {
         })
     }
 
-    /// SDK `_request` : 같은 요청을 `MAX_RETRIES`번 더 보낼 수 있다
+    /// SDK `_request` : 같은 요청을 `MAX_RETRIES`번 더 보낼 수 있음
     async fn post(
         &self,
         path: &str,
@@ -322,7 +322,7 @@ struct Rendered {
 }
 
 /// 429 본문 `{"error": {"code": ...}}`의 `code` (예: `insufficient_quota`).
-/// 1~64자 ASCII 영숫자·`_`·`-`·`.`만 받는다. 본문의 나머지는 읽지 않는다
+/// 1~64자 ASCII 영숫자·`_`·`-`·`.`만 받음. 본문의 나머지는 읽지 않음
 fn quota_code(body: &[u8]) -> Option<String> {
     let value: Value = serde_json::from_slice(body).ok()?;
     let code = value.get("error")?.get("code")?.as_str()?;
@@ -528,7 +528,7 @@ mod tests {
             }
             map
         };
-        // retry-after-ms가 먼저, 0 초과 60 이하만 따른다
+        // retry-after-ms가 먼저, 0 초과 60 이하만 따름
         assert_eq!(
             retry_after(&headers(&[("retry-after-ms", "250")])),
             Some(0.25)

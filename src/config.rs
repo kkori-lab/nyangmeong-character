@@ -1,5 +1,5 @@
 //! `app/core/config.py` Settings : 환경변수가 `.env.local`보다 우선(키 이름은 대소문자 무시)
-//! 2번 서버는 systemd `EnvironmentFile`(시크릿 ENV_FILE)로 넣는다
+//! 2번 서버는 systemd `EnvironmentFile`(시크릿 ENV_FILE)로 넣음
 
 use std::path::Path;
 
@@ -9,7 +9,7 @@ pub struct Settings {
     pub backend_base_url: String,
     /// 이미지 생성(OpenAI) : 비면 캐릭터 생성 API 502
     pub openai_api_key: String,
-    /// OpenAI 주소(없으면 `https://api.openai.com/v1`). Python SDK도 같은 환경변수를 읽는다 : 대조 테스트가 가짜 OpenAI를 가리킨다
+    /// OpenAI 주소(없으면 `https://api.openai.com/v1`). Python SDK도 같은 환경변수를 읽음 : 대조 테스트가 가짜 OpenAI를 가리킴
     pub openai_base_url: String,
     pub character_image_model: String,
     pub character_vision_model: String,

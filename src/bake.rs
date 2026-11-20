@@ -1,7 +1,7 @@
 //! `app/character/bake.py` : 착용 컷 정렬·아이템 레이어 추출
 //!
 //! - 굽기 캐시·판별 사다리는 제외 : 시트는 Java 보관. 외부 호출 없음
-//! - 차이: numpy `int`(8바이트) 배열 대신 `u8`로 두고 색 차이는 `i16`으로 잰다(결과는 같음)
+//! - 차이: numpy `int`(8바이트) 배열 대신 `u8`로 두고 색 차이는 `i16`으로 계산(결과는 같음)
 
 use crate::engine::{self, BG_THRESHOLD, Cut, EngineError};
 use crate::ndimage::{self, Structure};
