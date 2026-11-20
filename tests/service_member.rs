@@ -16,18 +16,6 @@ use nyangmeong_character::service;
 
 type Queue = BakeQueue<FakeClient, FakeRepo>;
 
-const PHOTO: &[u8] = b"\x89PNG\r\n\x1a\n0000000000000000";
-
-fn info(sn: i64) -> CharacterJob {
-    CharacterJob {
-        char_crt_job_sn: sn,
-        pet_se_cd: "PETC0002".into(),
-        vrty_nm: Some("코리안숏헤어".into()),
-        colr_nm: Some("고등어".into()),
-        chrc_cn: Some("귀 접힘".into()),
-    }
-}
-
 fn status(error: ApiError) -> (u16, String) {
     match error {
         ApiError::App(app) => (app.http_code, app.code),
@@ -500,20 +488,6 @@ async fn java_4xx_on_save_is_passed_up() {
 }
 
 // FN-MYP-010-23 : 관리자 무료 재생성 (응답 뒤 흐름)
-
-fn regen_repo() -> FakeRepo {
-    let mut repo = FakeRepo::default();
-    repo.regen_jobs.insert(5, info(5));
-    repo.original_photos.insert(5, Bytes::from_static(PHOTO));
-    repo
-}
-
-async fn regenerate(client: FakeClient, repo: FakeRepo) -> (Arc<FakeClient>, Arc<FakeRepo>) {
-    let (client, repo) = (Arc::new(client), Arc::new(repo));
-    service::regenerate_and_report(client.clone(), repo.clone(), Arc::new(Queue::default()), 5)
-        .await;
-    (client, repo)
-}
 
 #[tokio::test]
 async fn regenerate_starts_fetches_photo_generates_and_reports_in_order() {

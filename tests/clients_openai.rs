@@ -1,6 +1,8 @@
 //! `clients.py` OpenAiClient : `generate`(눈 판별 → 시트 생성 → 서기 정면 배치)·그림 참고 굽기·시간 초과 재시도.
 //! 가짜 OpenAI를 이 PC의 임시 포트에 띄움(실제 OpenAI는 부르지 않음). 요청 모양의 Python 대조는 `contract/`가 맡음
 
+mod common;
+
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -10,16 +12,11 @@ use axum::http::StatusCode;
 use axum::response::Response;
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
+use common::fixture;
 use nyangmeong_character::clients::{CharacterClient, CharacterRequest, OpenAiClient};
 use nyangmeong_character::config::Settings;
 use nyangmeong_character::engine::{self, BakeItem};
 use serde_json::{Value, json};
-
-const FIX: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/image");
-
-fn fixture(name: &str) -> Vec<u8> {
-    std::fs::read(format!("{FIX}/{name}")).unwrap()
-}
 
 #[derive(Clone, Debug)]
 struct Seen {

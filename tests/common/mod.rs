@@ -5,8 +5,9 @@
 #![allow(dead_code)]
 
 use std::collections::{HashMap, HashSet};
-use std::sync::Mutex;
+use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
 
 use bytes::Bytes;
 use nyangmeong_character::backend::BackendError;
@@ -17,9 +18,11 @@ use nyangmeong_character::clients::{
 use nyangmeong_character::engine::BakeItem;
 use nyangmeong_character::error::ApiError;
 use nyangmeong_character::pil::{self, Img};
+use nyangmeong_character::queue::BakeQueue;
 use nyangmeong_character::repository::{
     BakeTargetPage, CharacterFailure, CharacterJob, CharacterJobRepository, CharacterSheets,
 };
+use nyangmeong_character::service;
 use tokio::sync::Semaphore;
 
 const FIX: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/image");
@@ -495,4 +498,55 @@ impl CharacterClient for FakeClient {
     async fn draw_item(&self, _: &[u8], _: &str, _: &str) -> Result<Vec<u8>, CharacterApiError> {
         Err(CharacterApiError)
     }
+}
+
+pub const PHOTO: &[u8] = b"\x89PNG\r\n\x1a\n0000000000000000";
+
+pub fn info(sn: i64) -> CharacterJob {
+    CharacterJob {
+        char_crt_job_sn: sn,
+        pet_se_cd: "PETC0002".into(),
+        vrty_nm: Some("코리안숏헤어".into()),
+        colr_nm: Some("고등어".into()),
+        chrc_cn: Some("귀 접힘".into()),
+    }
+}
+
+pub fn app_error(error: ApiError) -> (u16, String) {
+    match error {
+        ApiError::App(app) => (app.http_code, app.code),
+        other => panic!("AppError여야 함: {other:?}"),
+    }
+}
+
+/// 로그 파일에서 `app.character.service` ERROR 줄 중 `prefix`로 시작하는 메시지
+pub fn error_lines(path: &Path, prefix: &str) -> Vec<String> {
+    std::fs::read_to_string(path)
+        .unwrap_or_default()
+        .lines()
+        .filter_map(|line| line.split_once(" ERROR app.character.service - "))
+        .map(|(_, message)| message.to_owned())
+        .filter(|message| message.starts_with(prefix))
+        .collect()
+}
+
+/// FN-MYP-010-23 : REGEN 작업 5와 그 원본 사진이 있는 저장소
+pub fn regen_repo() -> FakeRepo {
+    let mut repo = FakeRepo::default();
+    repo.regen_jobs.insert(5, info(5));
+    repo.original_photos.insert(5, Bytes::from_static(PHOTO));
+    repo
+}
+
+/// 작업 5 재생성을 끝까지 돌림
+pub async fn regenerate(client: FakeClient, repo: FakeRepo) -> (Arc<FakeClient>, Arc<FakeRepo>) {
+    let (client, repo) = (Arc::new(client), Arc::new(repo));
+    service::regenerate_and_report(
+        client.clone(),
+        repo.clone(),
+        Arc::new(BakeQueue::default()),
+        5,
+    )
+    .await;
+    (client, repo)
 }

@@ -3,7 +3,6 @@
 
 mod common;
 
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use bytes::Bytes;
@@ -18,8 +17,6 @@ use nyangmeong_character::repository::{
     BakeTargetPage, CharacterFailure, CharacterJob, CharacterJobRepository, CharacterSheets,
 };
 use nyangmeong_character::service;
-
-const PHOTO: &[u8] = b"\x89PNG\r\n\x1a\n0000000000000000";
 
 /// 굽기 대상 응답 모양이 틀린 Java : `list_bake_items`만 502(EXTERNAL_API_ERROR), 나머지는 FakeRepo
 struct ShapeRepo(FakeRepo);
@@ -92,16 +89,6 @@ async fn create<R: CharacterJobRepository + 'static>(repo: R) {
         Some("pet.png".into()),
     )
     .await;
-}
-
-fn error_lines(path: &PathBuf, prefix: &str) -> Vec<String> {
-    std::fs::read_to_string(path)
-        .unwrap_or_default()
-        .lines()
-        .filter_map(|line| line.split_once(" ERROR app.character.service - "))
-        .map(|(_, message)| message.to_owned())
-        .filter(|message| message.starts_with(prefix))
-        .collect()
 }
 
 /// 전역 로그 파일을 쓰므로 사례를 한 테스트에서 차례로

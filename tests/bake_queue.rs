@@ -284,13 +284,6 @@ async fn batch(
     (result, repo)
 }
 
-fn app_error(error: ApiError) -> (u16, String) {
-    match error {
-        ApiError::App(app) => (app.http_code, app.code),
-        other => panic!("AppError여야 함: {other:?}"),
-    }
-}
-
 #[tokio::test]
 async fn batch_bakes_characters_fetching_sheets_when_taken() {
     let repo = FakeRepo::with_items(vec![item(9, "MYPC0004")]);

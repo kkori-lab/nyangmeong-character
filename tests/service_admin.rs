@@ -1,11 +1,14 @@
 //! `service.py`의 관리자 경로 흐름(describe_item·draw_item·trial_preview) : 가짜 생성기·가짜 저장소로 확인
 //! 외부 API(OpenAI)는 부르지 않음. 원본 `tests/character/test_items.py`·`test_item_pixel.py`의 순서·오류 사례를 옮김
 
+mod common;
+
 use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use bytes::Bytes;
+use common::{app_error, fixture};
 use nyangmeong_character::canvas::Layout;
 use nyangmeong_character::clients::{
     CharacterApiError, CharacterClient, CharacterRequest, GeneratedCharacter, HEAVY_CONCURRENCY,
@@ -18,12 +21,6 @@ use nyangmeong_character::repository::{
     BakeTargetPage, CharacterFailure, CharacterJob, CharacterJobRepository, CharacterSheets,
 };
 use nyangmeong_character::service;
-
-const FIX: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/image");
-
-fn fixture(name: &str) -> Vec<u8> {
-    std::fs::read(format!("{FIX}/{name}")).unwrap()
-}
 
 /// 부른 횟수를 세고 정해 둔 답을 주는 생성기
 #[derive(Default)]
@@ -139,13 +136,6 @@ fn sheets() -> CharacterSheets {
         },
         sheets: HashMap::new(),
         failed: HashSet::new(),
-    }
-}
-
-fn app_error(error: ApiError) -> (u16, String) {
-    match error {
-        ApiError::App(app) => (app.http_code, app.code),
-        other => panic!("AppError여야 함: {other:?}"),
     }
 }
 

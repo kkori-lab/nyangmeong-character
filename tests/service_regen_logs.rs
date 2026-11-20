@@ -4,55 +4,9 @@
 
 mod common;
 
-use std::path::PathBuf;
-use std::sync::Arc;
-
-use bytes::Bytes;
 use common::*;
 use nyangmeong_character::logs;
-use nyangmeong_character::queue::BakeQueue;
-use nyangmeong_character::repository::{CharacterFailure, CharacterJob};
-use nyangmeong_character::service;
-
-const PHOTO: &[u8] = b"\x89PNG\r\n\x1a\n0000000000000000";
-
-fn regen_repo() -> FakeRepo {
-    let mut repo = FakeRepo::default();
-    repo.regen_jobs.insert(
-        5,
-        CharacterJob {
-            char_crt_job_sn: 5,
-            pet_se_cd: "PETC0002".into(),
-            vrty_nm: Some("코리안숏헤어".into()),
-            colr_nm: Some("고등어".into()),
-            chrc_cn: Some("귀 접힘".into()),
-        },
-    );
-    repo.original_photos.insert(5, Bytes::from_static(PHOTO));
-    repo
-}
-
-async fn regenerate(repo: FakeRepo) -> (Arc<FakeClient>, Arc<FakeRepo>) {
-    let (client, repo) = (Arc::new(FakeClient::default()), Arc::new(repo));
-    service::regenerate_and_report(
-        client.clone(),
-        repo.clone(),
-        Arc::new(BakeQueue::default()),
-        5,
-    )
-    .await;
-    (client, repo)
-}
-
-fn error_lines(path: &PathBuf, prefix: &str) -> Vec<String> {
-    std::fs::read_to_string(path)
-        .unwrap_or_default()
-        .lines()
-        .filter_map(|line| line.split_once(" ERROR app.character.service - "))
-        .map(|(_, message)| message.to_owned())
-        .filter(|message| message.starts_with(prefix))
-        .collect()
-}
+use nyangmeong_character::repository::CharacterFailure;
 
 /// 전역 로그 파일을 쓰므로 사례를 한 테스트에서 차례로
 #[tokio::test]
@@ -63,10 +17,13 @@ async fn regenerate_failure_logs_reason() {
     let path = folder.join(format!("character_{}.log", logs::local_today()));
 
     // 이미 처리됨 : regen-start 409 -> 이유 한 줄, 생성·보고 없음
-    let (client, repo) = regenerate(FakeRepo {
-        regen_start_error: Some(backend_error(409, br#"{"code":"ALREADY_PROCESSED"}"#)),
-        ..regen_repo()
-    })
+    let (client, repo) = regenerate(
+        FakeClient::default(),
+        FakeRepo {
+            regen_start_error: Some(backend_error(409, br#"{"code":"ALREADY_PROCESSED"}"#)),
+            ..regen_repo()
+        },
+    )
     .await;
     assert_eq!(
         error_lines(&path, "재생성 시작 실패"),
@@ -78,7 +35,7 @@ async fn regenerate_failure_logs_reason() {
     // 원본 사진 없음 : original-photo 404 -> 이유 한 줄, INPUT_ERROR 보고
     let mut missing = regen_repo();
     missing.original_photos.clear();
-    let (client, repo) = regenerate(missing).await;
+    let (client, repo) = regenerate(FakeClient::default(), missing).await;
     assert_eq!(
         error_lines(&path, "재생성 원본 사진 조회 실패"),
         ["재생성 원본 사진 조회 실패: charCrtJobSn=5: Java 404"]

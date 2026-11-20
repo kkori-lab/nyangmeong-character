@@ -105,6 +105,103 @@ enum Body {
     Json(JsonBody),
 }
 
+/// 값 검증을 통과한 경로별 입력
+enum Input<'a> {
+    CreateCharacter {
+        photo: &'a form::UploadFile,
+        pet_sn: i64,
+    },
+    Preview {
+        pixel_char_sn: i64,
+        item_sns: Vec<i64>,
+    },
+    EquippedImage {
+        pixel_char_sn: i64,
+        item_sns: Vec<i64>,
+    },
+    BakeHints {
+        image: &'a form::UploadFile,
+        regn_cd: &'a str,
+        item_nm: &'a str,
+    },
+    PixelImage {
+        image: &'a form::UploadFile,
+        regn_cd: &'a str,
+        item_nm: &'a str,
+    },
+    TrialPreview {
+        pixel_char_sn: i64,
+        regn_cd: String,
+        bake_hint: String,
+    },
+    BakeItem(i64),
+    Regenerate(i64),
+}
+
+/// 경로·본문 값 검증 : 경로 번호 → 본문 순서
+fn validate<'a>(route: Route, param: Option<&str>, body: &'a Body) -> Result<Input<'a>, ApiError> {
+    use Route::*;
+    Ok(match (route, body) {
+        (CreateCharacter, Body::Form(form)) => {
+            let photo = form.file("photo");
+            let pet_sn = form.text("petSn").and_then(pyval::pydantic_int_str);
+            let (photo, pet_sn) = photo.zip(pet_sn).ok_or(ApiError::Validation)?;
+            Input::CreateCharacter { photo, pet_sn }
+        }
+        (Preview | EquippedImage, Body::Json(json)) => {
+            let pixel_char_sn = path_int(param)?;
+            let item_sns = preview_request(json).ok_or(ApiError::Validation)?;
+            if route == Preview {
+                Input::Preview {
+                    pixel_char_sn,
+                    item_sns,
+                }
+            } else {
+                Input::EquippedImage {
+                    pixel_char_sn,
+                    item_sns,
+                }
+            }
+        }
+        (BakeHints | PixelImage, Body::Form(form)) => {
+            let image = form.file("image");
+            let regn_cd = form.text("regnCd");
+            let item_nm = form
+                .text("itemNm")
+                .filter(|n| (1..=ITEM_NM_MAX).contains(&pyval::py_len(n)));
+            let ((image, regn_cd), item_nm) = image
+                .zip(regn_cd)
+                .zip(item_nm)
+                .ok_or(ApiError::Validation)?;
+            if route == BakeHints {
+                Input::BakeHints {
+                    image,
+                    regn_cd,
+                    item_nm,
+                }
+            } else {
+                Input::PixelImage {
+                    image,
+                    regn_cd,
+                    item_nm,
+                }
+            }
+        }
+        (TrialPreview, Body::Json(json)) => {
+            let (pixel_char_sn, regn_cd, bake_hint) =
+                trial_request(json).ok_or(ApiError::Validation)?;
+            Input::TrialPreview {
+                pixel_char_sn,
+                regn_cd,
+                bake_hint,
+            }
+        }
+        (BakeItem, Body::None) => Input::BakeItem(path_int(param)?),
+        (Regenerate, Body::None) => Input::Regenerate(path_int(param)?),
+        _ => unreachable!("경로마다 본문 종류가 정해져 있음"),
+    })
+}
+
 pub async fn handle(matched: Matched, ctx: Ctx<'_>) -> Result<Response, ApiError> {
     use Route::*;
     // 1. 본문 읽기 (의존성보다 먼저)
@@ -129,35 +226,7 @@ pub async fn handle(matched: Matched, ctx: Ctx<'_>) -> Result<Response, ApiError
         }
     };
     // 4. 경로·본문 값 검증
-    let param = matched.param.as_deref();
-    match (matched.route, &body) {
-        (CreateCharacter, Body::Form(form)) => {
-            let photo = form.file("photo");
-            let pet_sn = form.text("petSn").and_then(pyval::pydantic_int_str);
-            photo.zip(pet_sn).ok_or(ApiError::Validation)?;
-        }
-        (Preview | EquippedImage, Body::Json(json)) => {
-            path_int(param)?;
-            preview_request(json).ok_or(ApiError::Validation)?;
-        }
-        (BakeHints | PixelImage, Body::Form(form)) => {
-            let image = form.file("image");
-            let regn_cd = form.text("regnCd");
-            let item_nm = form
-                .text("itemNm")
-                .filter(|n| (1..=ITEM_NM_MAX).contains(&pyval::py_len(n)));
-            (image.is_some() && regn_cd.is_some() && item_nm.is_some())
-                .then_some(())
-                .ok_or(ApiError::Validation)?;
-        }
-        (TrialPreview, Body::Json(json)) => {
-            trial_request(json).ok_or(ApiError::Validation)?;
-        }
-        (BakeItem | Regenerate, Body::None) => {
-            path_int(param)?;
-        }
-        _ => unreachable!("경로마다 본문 종류가 정해져 있음"),
-    }
+    let input = validate(matched.route, matched.param.as_deref(), &body)?;
     // 5. 핸들러
     let repo = || {
         Arc::new(JavaRepository::new(
@@ -166,13 +235,8 @@ pub async fn handle(matched: Matched, ctx: Ctx<'_>) -> Result<Response, ApiError
         ))
     };
     let client = ctx.client.as_deref();
-    match (matched.route, &body) {
-        (CreateCharacter, Body::Form(form)) => {
-            let photo = form.file("photo").expect("값 검증을 통과함");
-            let pet_sn = form
-                .text("petSn")
-                .and_then(pyval::pydantic_int_str)
-                .expect("값 검증을 통과함");
+    match input {
+        Input::CreateCharacter { photo, pet_sn } => {
             // 10MB + 1바이트까지만 읽기 : 초과 판정용
             let image = upload_bytes(photo);
             let repo = repo();
@@ -193,15 +257,15 @@ pub async fn handle(matched: Matched, ctx: Ctx<'_>) -> Result<Response, ApiError
                 202,
             ))
         }
-        (Regenerate, Body::None) => {
+        Input::Regenerate(char_crt_job_sn) => {
             // FN-MYP-010-23 : Java가 만든 REGEN 작업 번호만 받고 입력은 Java에서 받음
-            let char_crt_job_sn = path_int(param)?;
             service::regenerate(ctx.client.clone(), repo(), ctx.queue, char_crt_job_sn)?;
             Ok(response::success(None, 202))
         }
-        (Preview, Body::Json(json)) => {
-            let pixel_char_sn = path_int(param)?;
-            let item_sns = preview_request(json).expect("값 검증을 통과함");
+        Input::Preview {
+            pixel_char_sn,
+            item_sns,
+        } => {
             let image = service::preview(
                 ctx.client.clone(),
                 repo(),
@@ -215,9 +279,10 @@ pub async fn handle(matched: Matched, ctx: Ctx<'_>) -> Result<Response, ApiError
                 None => Err(item_baking(ctx.queue)),
             }
         }
-        (EquippedImage, Body::Json(json)) => {
-            let pixel_char_sn = path_int(param)?;
-            let item_sns = preview_request(json).expect("값 검증을 통과함");
+        Input::EquippedImage {
+            pixel_char_sn,
+            item_sns,
+        } => {
             let saved = service::save_equipped_image(
                 ctx.client.clone(),
                 repo(),
@@ -231,9 +296,8 @@ pub async fn handle(matched: Matched, ctx: Ctx<'_>) -> Result<Response, ApiError
             }
             Err(item_baking(ctx.queue))
         }
-        (BakeItem, Body::None) => {
+        Input::BakeItem(item_sn) => {
             // 한 묶음을 다 굽고 답함 : 관리자 프론트가 lastYn까지 다시 부름 (쿠키 30분 만료 대책)
-            let item_sn = path_int(param)?;
             let result =
                 service::bake_item_batch(ctx.client.clone(), repo(), ctx.queue, item_sn).await?;
             Ok(response::success(
@@ -246,8 +310,11 @@ pub async fn handle(matched: Matched, ctx: Ctx<'_>) -> Result<Response, ApiError
                 200,
             ))
         }
-        (BakeHints, Body::Form(form)) => {
-            let (image, regn_cd, item_nm) = admin_item_form(form);
+        Input::BakeHints {
+            image,
+            regn_cd,
+            item_nm,
+        } => {
             let hint = service::describe_item(
                 client,
                 upload_bytes(image),
@@ -258,8 +325,11 @@ pub async fn handle(matched: Matched, ctx: Ctx<'_>) -> Result<Response, ApiError
             .await?;
             Ok(response::success(Some(json!({ "bakeHint": hint })), 200))
         }
-        (PixelImage, Body::Form(form)) => {
-            let (image, regn_cd, item_nm) = admin_item_form(form);
+        Input::PixelImage {
+            image,
+            regn_cd,
+            item_nm,
+        } => {
             let png = service::draw_item(
                 client,
                 upload_bytes(image),
@@ -270,15 +340,16 @@ pub async fn handle(matched: Matched, ctx: Ctx<'_>) -> Result<Response, ApiError
             .await?;
             Ok(png_response(png))
         }
-        (TrialPreview, Body::Json(json)) => {
-            let (pixel_char_sn, regn_cd, bake_hint) =
-                trial_request(json).expect("값 검증을 통과함");
+        Input::TrialPreview {
+            pixel_char_sn,
+            regn_cd,
+            bake_hint,
+        } => {
             let repo = repo();
             let png =
                 service::trial_preview(client, &*repo, pixel_char_sn, &regn_cd, &bake_hint).await?;
             Ok(png_response(png))
         }
-        _ => unreachable!("경로마다 본문 종류가 정해져 있음"),
     }
 }
 
@@ -293,15 +364,6 @@ fn item_baking(queue: &Arc<AppQueue>) -> ApiError {
 /// 업로드는 10MB + 1바이트까지만 읽음 : 초과 판정용
 fn upload_bytes(file: &form::UploadFile) -> &[u8] {
     &file.data[..file.data.len().min(MAX_IMAGE_BYTES + 1)]
-}
-
-/// 값 검증을 통과한 관리자 아이템 폼 : image, regnCd, itemNm
-fn admin_item_form(form: &FormData) -> (&form::UploadFile, &str, &str) {
-    (
-        form.file("image").expect("값 검증을 통과함"),
-        form.text("regnCd").expect("값 검증을 통과함"),
-        form.text("itemNm").expect("값 검증을 통과함"),
-    )
 }
 
 /// `Response(png, media_type="image/png")`

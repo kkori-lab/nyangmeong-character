@@ -33,6 +33,7 @@ Rust stable(edition 2024), axum 0.8, tokio, reqwest 0.13, serde_json(`preserve_o
 ```
 src/
 ├─ main.rs        서버 시작(PORT 기본 8100)
+├─ lib.rs         모듈 공개(통합 테스트·examples용)
 ├─ app.rs         라우터 조립, 404·405·끝 / 307, 요청 로그        ← app/main.py, Starlette
 ├─ config.rs      설정(환경변수·.env.local)                        ← core/config.py
 ├─ response.rs    ApiResponse                                      ← core/response.py
@@ -52,7 +53,8 @@ src/
 ├─ compose.rs     착장 합성                                         ← character/compose.py
 ├─ clients.rs     OpenAI 호출·큰 계산 동시 수 제한                  ← character/clients.py
 ├─ repository.rs  Java 캐릭터 내부 API                              ← character/repository.py
-├─ service.rs     관리자 경로 흐름(굽기 큐는 M5)                    ← character/service.py
+├─ service.rs     회원·관리자 경로 흐름                             ← character/service.py
+├─ queue.rs       굽기 큐(BakeTask·BakeQueue)                       ← character/service.py
 └─ character.rs   /ai/characters·/ai/items 경로                     ← character/router.py
 prompts/          OpenAI 프롬프트·화풍 그림(원본 app/character/prompts/ 그대로, 바이너리에 넣음)
 contract/         Python↔러스트 대조 테스트(가짜 Java·OpenAI), 정답 만들기(gold_images.py·gold_prompts.py)·측정(image_bench.py)

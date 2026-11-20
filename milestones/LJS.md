@@ -86,3 +86,9 @@
 - 완료 조건: 명령: `sh scripts/check.sh`(이유 단위·통합 테스트) / 화면: 로컬 Java + `cargo run`으로 ① 관리자 202 ② 로그 순서 ③ Java 작업 완료·이미지 바뀜 ④ 재호출 202·`재생성 시작 실패: …: Java 409`만 ⑤ 회원 403 `FORBIDDEN`
 - 결과: 검증 1회차(사람 확인만 남음), 대조 그대로 통과, 사람 확인(2026-11-19, 작업 822 생성·굽기까지, 820 재호출 `Java 409`, 회원 403). 시드 캐릭터는 원본 파일이 없어 original-photo 404
 - 연결 남음: 로컬 시험 데이터 정리 — 문의 235·237·238, 작업 810·820·821·822, 캐릭터 621·600·625 (백엔드에서 /start). 확인 결과 답장은 2026-11-19 ai 세션에 보냄
+
+## M13 리팩토링 (AGENTS.md 모듈 구조·handle 값 검증 한 번·테스트 도우미 모으기) — 끝
+- 기능: `AGENTS.md` 모듈 구조에 `queue.rs` 추가·`service.rs` 설명 고침, `src/character.rs` `handle`이 검증한 값을 경로별 enum으로 넘겨 다시 꺼내지 않게, `tests/`에 복사된 도우미(`app_error`·`fixture`·`error_lines`·`info`·`PHOTO`·`regen_repo`·`regenerate`)를 `tests/common/mod.rs`로
+- 원본: Python 코드를 옮기는 일이 아님(동작 변화 없음). 검증 순서의 기준은 `nyangmeong-ai` `app/character/router.py` 그대로
+- 완료 조건: 명령: `sh scripts/check.sh`(대조 사례 수·`cargo test` 테스트 수가 전과 같음), `src/character.rs`에 `값 검증을 통과함` 0곳 / 화면: 없음(8개 경로 응답은 대조 테스트가 Python과 비교)
+- 결과: 검증 통과(첫 검증은 `AGENTS.md`에 `lib.rs`가 없어 실패, 한 줄 넣고 다시 검증), 대조 그대로 통과, 사람 확인(2026-11-20)
