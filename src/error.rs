@@ -1,7 +1,7 @@
 //! `app/core/errors.py` + FastAPI·Starlette 기본 오류 응답
 //!
 //! 핸들러는 경로를 모른 채 `ApiError`를 돌려주고, `render_errors` 미들웨어가
-//! 요청 경로(`request.url.path`, 퍼센트 디코딩)를 넣어 최종 응답을 만든다.
+//! 요청 경로(`request.url.path`, 퍼센트 디코딩)를 넣어 최종 응답을 만듦
 
 use crate::backend::BackendError;
 use crate::pyjson;
@@ -56,7 +56,7 @@ impl IntoResponse for ApiError {
     }
 }
 
-/// 미들웨어 : 핸들러가 남긴 `ApiError`를 요청 경로와 함께 응답으로 바꾼다
+/// 미들웨어 : 핸들러가 남긴 `ApiError`를 요청 경로와 함께 응답으로 바꿈
 pub async fn render_errors(request: Request, next: Next) -> Response {
     let path = decoded_path(request.uri().path());
     let res = next.run(request).await;
@@ -110,7 +110,7 @@ fn backend_response(error: BackendError, path: &str) -> Response {
     let mut res = (status, body).into_response();
     let headers = res.headers_mut();
     headers.remove(header::CONTENT_TYPE);
-    // Starlette Response(media_type=...) : text/*에 charset이 없으면 `; charset=utf-8`을 붙인다
+    // Starlette Response(media_type=...) : text/*에 charset이 없으면 `; charset=utf-8`을 붙임
     if let Some(content_type) = error.content_type.as_deref() {
         let mut content_type = content_type.to_owned();
         if content_type.starts_with("text/") && !content_type.to_lowercase().contains("charset=") {
@@ -126,7 +126,7 @@ fn backend_response(error: BackendError, path: &str) -> Response {
     res
 }
 
-/// Java 오류 본문의 path(/internal/...)를 React가 부른 경로로 바꾼다. path가 없으면 그대로
+/// Java 오류 본문의 path(/internal/...)를 React가 부른 경로로 바꿈. path가 없으면 그대로
 pub fn hide_internal_path(body: &[u8], path: &str) -> Vec<u8> {
     let Some(Value::Object(mut data)) = pyjson::loads(body) else {
         return body.to_vec();

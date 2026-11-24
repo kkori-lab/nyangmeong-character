@@ -1,9 +1,9 @@
 //! `app/character/repository.py` : Java 캐릭터 내부 API 호출 (`docs/api/internal.md` "Python → Java")
 //!
 //! 회원 판정은 Java(브라우저 Cookie 그대로 전달) : 4xx는 그대로 전달, 연결 실패·5xx·응답 모양 불일치는 502.
-//! 응답 뒤 호출도 요청에서 복사해 둔 쿠키를 쓴다 : 쿠키가 만료되면 Java가 401(보고 실패로 남음)
+//! 응답 뒤 호출도 요청에서 복사해 둔 쿠키 사용 : 쿠키가 만료되면 Java가 401(보고 실패로 남음)
 //! - 차이: `BakeTargetPage`·`CharacterSheets`의 번호 목록·표는 Python `dict`·`set` 대신 `Vec`·`HashMap`·`HashSet`.
-//!   `list_bake_items`는 Python `dict`처럼 처음 나온 자리에 마지막 값을 둔 `Vec`로 돌려준다
+//!   `list_bake_items`는 Python `dict`처럼 처음 나온 자리에 마지막 값을 둔 `Vec`로 돌려줌
 
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::future::Future;
@@ -275,7 +275,7 @@ fn parse_sheets(data: &Value) -> Option<SheetsResponse> {
 }
 
 /// Python `str(float)` : `place`의 `min(.., TOP_MAX)`가 100(정수)을 돌려주면 `"100"`
-/// 러스트 `Layout`은 f64라 정확히 100.0이면 정수 100으로 본다(실수가 우연히 100.0일 확률은 0에 가깝다)
+/// 러스트 `Layout`은 f64라 정확히 100.0이면 정수 100으로 취급(실수가 우연히 100.0일 확률은 0에 가까움)
 fn placement_text(value: f64) -> String {
     if value == crate::canvas::TOP_MAX {
         return "100".into();
@@ -305,7 +305,7 @@ pub fn photo_type(file_name: &str) -> &'static str {
 }
 
 /// httpx `_format_form_param`의 HTML5 치환 중 reqwest가 다르게 하는 것 : `"`는 `%22`,
-/// 0x1B를 뺀 제어 문자 0x00~0x1F는 `%XX`. `\`는 reqwest도 `\\`로 바꾼다
+/// 0x1B를 뺀 제어 문자 0x00~0x1F는 `%XX`. `\`는 reqwest도 `\\`로 바꿈
 pub fn html5_file_name(file_name: &str) -> String {
     let mut out = String::with_capacity(file_name.len());
     for c in file_name.chars() {

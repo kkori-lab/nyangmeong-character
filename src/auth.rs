@@ -45,7 +45,7 @@ pub async fn require_admin(backend: &Backend, headers: &HeaderMap) -> Result<i64
 }
 
 async fn check(backend: &Backend, headers: &HeaderMap) -> Result<(i64, Option<String>), ApiError> {
-    // Starlette headers.get : 같은 이름이 여럿이면 첫 값. 빈 값이면 보내지 않는다
+    // Starlette headers.get : 같은 이름이 여럿이면 첫 값. 빈 값이면 보내지 않음
     let cookie = headers
         .get(header::COOKIE)
         .filter(|v| !v.is_empty())
@@ -88,7 +88,7 @@ fn parse(body: &[u8]) -> Option<(i64, Option<String>)> {
     Some((mbr_sn, authority))
 }
 
-/// 502 이유 한 줄 : 주소 값·쿠키·응답 본문은 남기지 않는다
+/// 502 이유 한 줄 : 주소 값·쿠키·응답 본문은 남기지 않음
 fn fail(reason: &str) -> ApiError {
     logs::warning(LOGGER, format!("인증 확인 실패({reason}), 502"));
     external_error().into()

@@ -1,4 +1,4 @@
-//! 프롬프트·눈 판독이 원본 Python(`engine.py`)과 문자열까지 같은지 비교한다.
+//! 프롬프트·눈 판독이 원본 Python(`engine.py`)과 문자열까지 같은지 비교
 //! 정답: `sh scripts/gold.sh prompts`가 만든 `tests/fixtures/prompts.json`
 
 use nyangmeong_character::engine::{self, BakeItem, Eyes};

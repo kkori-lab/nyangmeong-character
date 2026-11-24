@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # 냥멍케어 캐릭터 서버(러스트) 개발 환경 설치. 맥은 터미널에서 `bash setup.sh`, Windows는 cmd·PowerShell에서 `setup.bat`(또는 Git Bash에서 `bash setup.sh`)로 실행한다.
 # 이미 맞는 버전이 있으면 건너뛴다. 여러 번 실행해도 된다.
-# 백엔드·프론트 저장소의 setup.sh와 공통 부분(맨 위 함수와 "공통" 절)이 같다. 고칠 때 셋 다 고친다. VS Code·MCP 함수는 이 저장소에서 쓰지 않아 뺐다(DMS MCP 제외, 2026-11-17).
+# 백엔드·프론트 저장소의 setup.sh와 공통 부분(맨 위 함수와 "공통" 절)이 같다. 고칠 때 셋 다 고친다. VS Code·MCP 함수는 이 저장소에서 쓰지 않아 뺐다(DMS MCP 제외, 2026-11-17). 그래서 공통 절 AI 도구 주석도 "감지한다"까지만 둔다(2026-11-19).
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -106,7 +106,7 @@ step "공통"
 command -v git >/dev/null || die "Git이 없습니다. Windows는 Git for Windows를 설치한 뒤 다시 실행해 주세요."
 skip "Git $(git --version | awk '{print $3}')"
 
-# AI 도구: 설치된 Claude Code·Codex를 감지해 그 도구에 MCP를 등록한다. 둘 다 없으면 Claude Code를 설치한다.
+# AI 도구: 설치된 Claude Code·Codex를 감지한다. 둘 다 없으면 Claude Code를 설치한다.
 # Codex만 쓰려면 Codex를 먼저 설치하고 실행한다. 다시 실행하면 새로 설치한 도구도 감지한다
 has_claude=n
 has_codex=n

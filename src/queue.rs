@@ -2,12 +2,12 @@
 //!
 //! - 프로세스 메모리 : 재시작하면 사라지고 프로세스 1개 전제(원본과 같음)
 //! - 이미 굽는 아이템은 다시 넣지 않음 : 같은 아이템 이중 과금 방지
-//! - Python은 한 스레드라 "확인 후 넣기"·"꺼내고 굽는 중 표시"가 끊기지 않는다. 여기는 상태를 잠금 하나에 두고
-//!   그 두 동작을 잠금 안에서 한 번에 한다. 잠금은 `.await` 동안 잡지 않는다
-//! - 차이: 일꾼 수는 잠금 안에서 세어 늘 `BAKE_CONCURRENCY` 이하다. Python은 `_work`가 처음 돌 때 수를 올려,
-//!   같은 틈에 `drain`이 두 번 불리면 잠깐 넘을 수 있다(결과는 같음)
-//! - 차이: 끊긴 요청의 대기자는 `future.done()` 확인 대신 `oneshot` 보내기 실패를 무시한다(결과 같음)
-//! - 일꾼은 `tokio::spawn`으로 띄운다 : 기다리던 요청이 끊겨도 굽기는 이어진다(Python `create_task`와 같음)
+//! - Python은 한 스레드라 "확인 후 넣기"·"꺼내고 굽는 중 표시"가 끊기지 않음. 여기는 상태를 잠금 하나에 두고
+//!   그 두 동작을 잠금 안에서 한 번에 함. 잠금은 `.await` 동안 잡지 않음
+//! - 차이: 일꾼 수는 잠금 안에서 세어 늘 `BAKE_CONCURRENCY` 이하. Python은 `_work`가 처음 돌 때 수를 올려,
+//!   같은 틈에 `drain`이 두 번 불리면 잠깐 넘을 수 있음(결과는 같음)
+//! - 차이: 끊긴 요청의 대기자는 `future.done()` 확인 대신 `oneshot` 보내기 실패를 무시(결과 같음)
+//! - 일꾼은 `tokio::spawn`으로 띄움 : 기다리던 요청이 끊겨도 굽기는 이어짐(Python `create_task`와 같음)
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -85,7 +85,7 @@ impl<C, R> Default for BakeQueue<C, R> {
 
 impl<C, R> BakeQueue<C, R> {
     fn lock(&self) -> MutexGuard<'_, State<C, R>> {
-        // 잠금 안에서는 패닉할 코드가 없다 : 독이 들어도 상태는 온전
+        // 잠금 안에서는 패닉할 코드가 없음 : 독이 들어도 상태는 온전
         self.state.lock().unwrap_or_else(|e| e.into_inner())
     }
 
@@ -123,7 +123,7 @@ impl<C, R> BakeQueue<C, R> {
     }
 }
 
-/// 굽던 작업이 끝나면(패닉 포함) 굽는 중 표시를 지우고 대기자에게 알린다
+/// 굽던 작업이 끝나면(패닉 포함) 굽는 중 표시를 지우고 대기자에게 알림
 struct Running<'a, C, R> {
     queue: &'a BakeQueue<C, R>,
     key: Key,
@@ -144,7 +144,7 @@ impl<C, R> Drop for Running<'_, C, R> {
     }
 }
 
-/// 일꾼이 끝나면(패닉 포함) 일꾼 수를 줄인다
+/// 일꾼이 끝나면(패닉 포함) 일꾼 수를 줄임
 struct Worker<'a, C, R>(&'a BakeQueue<C, R>);
 
 impl<C, R> Drop for Worker<'_, C, R> {
@@ -290,7 +290,7 @@ pub async fn bake_one<C: CharacterClient, R: CharacterJobRepository>(
     }
 }
 
-/// 403·그 밖의 4xx·502는 일시 오류일 수 있어 남겨 둔다
+/// 403·그 밖의 4xx·502는 일시 오류일 수 있어 남겨 둠
 fn sheet_file_missing(error: &ApiError) -> bool {
     let ApiError::Backend(backend) = error else {
         return false;

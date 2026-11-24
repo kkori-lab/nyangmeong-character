@@ -1,8 +1,8 @@
 //! Pillow 13.0.0 : 이미지 열기·RGBA 변환, NEAREST 크기 바꾸기, 마스크 붙이기, `thumbnail`(`reduce` + Lanczos), PNG 저장
 //!
-//! 이미지 계산(`engine.py`·`canvas.py`·`bake.py`·`compose.py`)이 쓰는 Pillow 동작만 옮겼다.
-//! - 정수 반올림·고정소수점·float32 변환은 Pillow의 C 코드(`Geometry.c`·`Paste.c`·`Reduce.c`·`Resample.c`)와 같은 순서로 한다
-//! - JPEG·손실 WebP 디코더는 Pillow(libjpeg-turbo·libwebp)와 화소가 조금 다르다(`docs/design/migration.md` "알려진 차이")
+//! 이미지 계산(`engine.py`·`canvas.py`·`bake.py`·`compose.py`)이 쓰는 Pillow 동작만 옮김
+//! - 정수 반올림·고정소수점·float32 변환은 Pillow의 C 코드(`Geometry.c`·`Paste.c`·`Reduce.c`·`Resample.c`)와 같은 순서
+//! - JPEG·손실 WebP 디코더는 Pillow(libjpeg-turbo·libwebp)와 화소가 조금 다름(`docs/design/migration.md` "알려진 차이")
 
 use std::io::Cursor;
 
@@ -86,7 +86,7 @@ pub fn to_rgba(image: &DynamicImage) -> Img {
                 ]
             })
             .collect(),
-        // 16비트 회색(Pillow "I;16")은 위 바이트가 아니라 255에서 잘린 값이다
+        // 16비트 회색(Pillow "I;16")은 위 바이트가 아니라 255에서 잘린 값
         DynamicImage::ImageLuma16(buffer) => buffer
             .as_raw()
             .iter()
@@ -114,7 +114,7 @@ pub fn to_rgba(image: &DynamicImage) -> Img {
     }
 }
 
-/// `image.convert("RGB")` : 투명도는 합성하지 않고 버린다
+/// `image.convert("RGB")` : 투명도는 합성하지 않고 버림
 pub fn to_rgb(image: &DynamicImage) -> Rgb {
     let rgba = to_rgba(image);
     Rgb {
@@ -140,7 +140,7 @@ pub fn py_round(value: f64) -> i64 {
     value.round_ties_even() as i64
 }
 
-/// `Image.resize(size, Image.NEAREST)` (`ImagingScaleAffine` : 입력 좌표를 `+=`로 쌓는다)
+/// `Image.resize(size, Image.NEAREST)` (`ImagingScaleAffine` : 입력 좌표를 `+=`로 쌓음)
 pub fn resize_nearest(image: &Img, width: usize, height: usize) -> Img {
     let x_step = image.width as f64 / width as f64;
     let y_step = image.height as f64 / height as f64;
@@ -239,7 +239,7 @@ pub fn paste_masked(dest: &mut Img, source: &Img, x: i64, y: i64) {
     }
 }
 
-/// `dest.paste(source, (x, y))` : 마스크 없이 덮어쓴다
+/// `dest.paste(source, (x, y))` : 마스크 없이 덮어쓰기
 pub fn paste(dest: &mut Img, source: &Img, x: i64, y: i64) {
     let Some((dx, dy, sx, sy, width, height)) = clip_region(dest, source, x, y) else {
         return;
@@ -263,7 +263,7 @@ fn png_bytes(data: &[u8], width: usize, height: usize, color: ColorType) -> Vec<
     buffer
 }
 
-/// `image.save(buffer, "PNG", optimize=True)` (압축 결과 바이트는 Pillow와 다르고 화소는 같다)
+/// `image.save(buffer, "PNG", optimize=True)` (압축 결과 바이트는 Pillow와 다르고 화소는 같음)
 pub fn encode_png(image: &Img) -> Vec<u8> {
     png_bytes(&image.data, image.width, image.height, ColorType::Rgba8)
 }
@@ -465,7 +465,7 @@ fn vertical_pass(image: &Rgb, out_h: usize, coeffs: &Coeffs) -> Rgb {
 }
 
 /// `ImagingResampleInner` (Pillow 13.0.0) : 보통 가로 먼저(쓰는 행만), 세로가 가로보다 두 배 넘게 줄면 세로 먼저.
-/// 중간 값은 8비트로 반올림한다
+/// 중간 값은 8비트로 반올림
 fn resample(image: &Rgb, out_w: usize, out_h: usize, area: (f32, f32, f32, f32)) -> Rgb {
     let need_horizontal = out_w != image.width || area.0 != 0.0 || area.2 != out_w as f32;
     let need_vertical = out_h != image.height || area.1 != 0.0 || area.3 != out_h as f32;

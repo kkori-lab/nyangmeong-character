@@ -1,8 +1,8 @@
-//! 이미지 계산 정답 비교 : 원본 Python(`contract/gold_images.py`)이 만든 PNG·값과 픽셀 단위로 같은지 본다
+//! 이미지 계산 정답 비교 : 원본 Python(`contract/gold_images.py`)이 만든 PNG·값과 픽셀 단위로 같은지 확인
 //!
-//! - 합성 사례(`tests/fixtures/image/`, 실제 반려동물 아님)는 항상 돈다
-//! - 실제 시트는 `CHARACTER_SHEETS_DIR`(bare.png, worn_<부위코드>.png)와 `CHARACTER_GOLD_DIR`가 있을 때만 돈다(커밋하지 않음)
-//! - PNG 바이트는 압축기가 달라 다르다 : 디코드한 RGBA 화소로 비교한다
+//! - 합성 사례(`tests/fixtures/image/`, 실제 반려동물 아님)는 항상 실행
+//! - 실제 시트는 `CHARACTER_SHEETS_DIR`(bare.png, worn_<부위코드>.png)와 `CHARACTER_GOLD_DIR`가 있을 때만 실행(커밋하지 않음)
+//! - PNG 바이트는 압축기가 달라 다름 : 디코드한 RGBA 화소로 비교
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -73,7 +73,7 @@ impl Check {
     }
 }
 
-/// 정답의 float는 repr 문자열이다(serde_json의 기본 실수 읽기는 마지막 한 비트가 틀릴 수 있음)
+/// 정답의 float는 repr 문자열(serde_json의 기본 실수 읽기는 마지막 한 비트가 틀릴 수 있음)
 fn number(value: &Value) -> f64 {
     value
         .as_str()
@@ -90,7 +90,7 @@ fn error_text(error: &EngineError) -> String {
     error.to_string()
 }
 
-/// 시트 한 사례(맨몸 + 부위별 착용)의 모든 정답을 비교한다
+/// 시트 한 사례(맨몸 + 부위별 착용)의 모든 정답 비교
 fn check_sheets(label: &str, input: &Path, gold: &Path) -> Vec<String> {
     let mut check = Check {
         failures: Vec::new(),
@@ -513,7 +513,7 @@ fn photo_normalizing_matches_python() {
         }
         count += 1;
         let raw = std::fs::read(&path).unwrap();
-        // JPEG·손실 WebP는 디코더(libjpeg-turbo·libwebp ↔ zune-jpeg·image-webp)가 달라 화소가 조금 다르다(알려진 차이) : 크기만 본다
+        // JPEG·손실 WebP는 디코더(libjpeg-turbo·libwebp ↔ zune-jpeg·image-webp)가 달라 화소가 조금 다름(알려진 차이) : 크기만 확인
         let pixels_must_match = !(name.ends_with(".jpg") || name.contains("lossy"));
         for (suffix, function) in [
             (

@@ -44,7 +44,7 @@ impl BackendError {
     }
 }
 
-/// 다 읽은 Java 응답 (httpx Response처럼 본문까지 받아 둔다)
+/// 다 읽은 Java 응답 (httpx Response처럼 본문까지 받아 둠)
 #[derive(Clone, Debug)]
 pub struct BackendResponse {
     pub status: u16,
@@ -52,8 +52,8 @@ pub struct BackendResponse {
     pub body: Bytes,
 }
 
-/// 요청끼리 공유한다. 쿠키 저장소를 두지 않는다 : 다른 회원 요청에 섞임 방지
-/// httpx 기본처럼 리다이렉트를 따라가지 않는다. 제한 시간은 연결·읽기 각각에 건다
+/// 요청끼리 공유. 쿠키 저장소를 두지 않음 : 다른 회원 요청에 섞임 방지
+/// httpx 기본처럼 리다이렉트를 따라가지 않음. 제한 시간은 연결·읽기 각각에 적용
 #[derive(Clone)]
 pub struct Backend {
     base_url: String,
@@ -182,7 +182,7 @@ pub fn reason(error: &reqwest::Error) -> String {
     }
 }
 
-/// 502로 바꾸며 이유 한 줄을 남긴다 : 주소 값·쿠키·본문·query·경로 숫자는 남기지 않는다
+/// 502로 바꾸며 이유 한 줄을 남김 : 주소 값·쿠키·본문·query·경로 숫자는 남기지 않음
 fn fail(method: &Method, path: &str, reason: &str) -> AppError {
     logs::warning(
         LOGGER,
@@ -191,7 +191,7 @@ fn fail(method: &Method, path: &str, reason: &str) -> AppError {
     external_error()
 }
 
-/// 경로의 숫자 구간(회원·반려동물 번호 등) -> {n}, query는 뺀다
+/// 경로의 숫자 구간(회원·반려동물 번호 등) -> {n}, query는 제외
 pub fn masked(path: &str) -> String {
     let path = path.split('?').next().unwrap_or("");
     path.split('/')

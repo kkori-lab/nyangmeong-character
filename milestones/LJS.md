@@ -66,3 +66,23 @@
 - 완료 조건: 명령: `sh scripts/check.sh`(사유 읽기 단위 테스트, 429 통합 테스트, 대조 사례 `bake-hints 429 insufficient_quota`) / 화면: 가짜 OpenAI가 `insufficient_quota` 429를 주게 하고 `LOG_DIR`를 켠 서버에 bake-hints 요청 → 로그 파일에 사유 줄 1개와 기존 실패 줄
 - 결과: 검증 1회차 통과, 대조 120/120, 사람 확인(2026-11-18)
 - 연결 남음: 2번 사유 로그 확인 (다음 실제 크레딧 소진, LJS)
+
+## M10 .bat 줄바꿈 CRLF 고정 (.gitattributes) — 끝
+- 기능: `.gitattributes`에 `*.bat text eol=crlf` 한 줄(백엔드 저장소와 같게). `core.autocrlf`가 꺼진 Windows 클론에서도 `setup.bat`이 CRLF로 풀려 `goto`·라벨이 어긋나지 않게
+- 원본: 백엔드 저장소 `.gitattributes`(`*.bat text eol=crlf`). Python 코드를 옮기는 일이 아님
+- 완료 조건: 명령: `sh scripts/check.sh`, `git ls-files --eol setup.bat`이 `i/lf`·`attr/text eol=crlf`, `git add --renormalize .` 뒤 바뀐 파일 없음 / 화면: `git -c core.autocrlf=false clone`한 임시 폴더의 `setup.bat`이 CRLF, `setup.sh`는 LF
+- 결과: 검증 1회차 통과, 사람 확인(2026-11-19)
+
+## M11 로그·주석 정리 (굽기 대상 조회 실패 이유·setup.sh MCP 주석) — 끝
+- 기능: `src/service.rs` 생성 뒤 `굽기 대상 조회 실패`·`캐릭터 성공 보고 실패` 로그에 이유 한 줄(Java 4xx 상태·응답 모양 다름·502, 성공 보고는 2026-11-19 결정 (나)), `setup.sh` 공통 절 AI 도구 주석에서 "MCP를 등록한다" 정리
+- 원본: `nyangmeong-ai` `app/character/service.py`(`logger.exception`, traceback 마지막 줄에 예외 이름만 → 원본에 없는 이유를 더함, `migration.md` "알려진 차이"). setup.sh는 Python 코드를 옮기는 일이 아님
+- 완료 조건: 명령: `sh scripts/check.sh`(이유 단위·통합 테스트), `bash -n setup.sh` / 화면: 가짜 Java가 `bake-items`에 403을 주게 하고 `LOG_DIR`를 켠 서버에 캐릭터 생성 → 로그에 이유가 붙은 줄 1개
+- 결과: 검증 1회차 통과, 대조 그대로 통과, 사람 확인(2026-11-19, 가짜 Java 403 → `굽기 대상 조회 실패: pixelCharSn=77: Java 403`)
+
+## M12 관리자 무료 재생성 실제 흐름 확인 (regenerate·재생성 실패 이유 로그) — 끝
+- 기능: `POST /ai/admin/characters/jobs/{charCrtJobSn}/regenerate`(FN-MYP-010-23)를 로컬 Java·러스트 서버로 끝까지 확인, `src/service.rs` `regenerate_and_report`의 `재생성 시작 실패`·`재생성 원본 사진 조회 실패` 로그에 이유(`service::cause`) 한 줄
+- 원본: `nyangmeong-ai` `app/character/router.py:regenerate_character`, `app/character/service.py:regenerate_and_report`(`logger.exception`, 원본에 없는 이유를 더함 → `migration.md` "알려진 차이", M11과 같은 줄)
+- 기다리는 것: 원본 사진 보존(nyangmeong-ai PR #84) 뒤 만든 캐릭터의 오류 문의와 관리자 무료 재생성 처리(`regenJobSn`), 관리자·회원 쿠키, OpenAI 크레딧 1회분 (사람)
+- 완료 조건: 명령: `sh scripts/check.sh`(이유 단위·통합 테스트) / 화면: 로컬 Java + `cargo run`으로 ① 관리자 202 ② 로그 순서 ③ Java 작업 완료·이미지 바뀜 ④ 재호출 202·`재생성 시작 실패: …: Java 409`만 ⑤ 회원 403 `FORBIDDEN`
+- 결과: 검증 1회차(사람 확인만 남음), 대조 그대로 통과, 사람 확인(2026-11-19, 작업 822 생성·굽기까지, 820 재호출 `Java 409`, 회원 403). 시드 캐릭터는 원본 파일이 없어 original-photo 404
+- 연결 남음: 로컬 시험 데이터 정리 — 문의 235·237·238, 작업 810·820·821·822, 캐릭터 621·600·625 (백엔드에서 /start). 확인 결과 답장은 2026-11-19 ai 세션에 보냄

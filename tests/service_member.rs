@@ -1,6 +1,6 @@
 //! `service.py`의 회원·재생성 흐름(create_job·generate_and_report·preview·save_equipped_image·regenerate_and_report)
 //! : 원본 `test_create.py`·`test_create_without_generator.py`·`test_preview.py`·`test_equipped_image.py`·`test_regenerate.py`의
-//! 서비스 수준 사례를 옮겼다. 인증·X-Requested-With·본문 값 검증 같은 경로 수준 사례는 대조(`contract/`)에서 본다
+//! 서비스 수준 사례를 옮김. 인증·X-Requested-With·본문 값 검증 같은 경로 수준 사례는 대조(`contract/`)에서 확인
 
 mod common;
 
@@ -534,7 +534,7 @@ async fn regenerate_starts_fetches_photo_generates_and_reports_in_order() {
     let saved = repo.saved(5);
     assert!(saved.image.is_some());
     assert_eq!(saved.failure, None);
-    // 재생성 success에는 원본을 보내지 않는다(Java가 무시)
+    // 재생성 success에는 원본을 보내지 않음(Java가 무시)
     assert_eq!(saved.original, None);
 }
 

@@ -1,7 +1,7 @@
 //! `app/character/engine.py` : 사진 정규화, 2×2 시트에서 서기 정면 컷 자르기, 아이템 그림 자르기
 //!
-//! 프롬프트·눈 판독(`build_prompt` 등)도 여기 있다. OpenAI 호출은 `clients.rs`
-//! - 차이: numpy의 `int`(8바이트)·`float64` 배열 대신 `u8`·`bool`로 두고, `_defringe`의 `t`·거리는 화소마다 f64로 계산해 판정만 저장한다(같은 연산 순서 → 같은 결과)
+//! 프롬프트·눈 판독(`build_prompt` 등)도 여기 있음. OpenAI 호출은 `clients.rs`
+//! - 차이: numpy의 `int`(8바이트)·`float64` 배열 대신 `u8`·`bool`로 두고, `_defringe`의 `t`·거리는 화소마다 f64로 계산해 판정만 저장(같은 연산 순서 → 같은 결과)
 
 use std::fmt;
 
@@ -161,7 +161,7 @@ fn fill_holes(blob: &[bool], loaded: &Loaded) -> Vec<bool> {
         .collect();
     let sizes = ndimage::count_by_label(None, &holes, count);
     let pocket_px = ndimage::count_by_label(Some(&bgish), &holes, count);
-    // Python은 매 구멍마다 `filled.sum()`을 다시 센다 : 지운 만큼 줄어든다
+    // Python은 매 구멍마다 `filled.sum()`을 다시 셈 : 지운 만큼 줄어듦
     let mut filled_count = filled.iter().filter(|&&on| on).count() as u64;
     for k in 0..count {
         let size = sizes[k];
@@ -304,7 +304,7 @@ fn stand_front_cut_loaded(loaded: &Loaded) -> Result<Cut, EngineError> {
         return Err(EngineError::Sheet("캐릭터 네 마리를 찾지 못함".into()));
     }
     let sizes = ndimage::count_by_label(None, &labels, count);
-    // 크기가 같은 덩어리의 순서는 결과에 영향이 없다(네 개 안이면 모두 쓰고, 경계면 오류)
+    // 크기가 같은 덩어리의 순서는 결과에 영향이 없음(네 개 안이면 모두 쓰고, 경계면 오류)
     let mut order: Vec<usize> = (0..count).collect();
     order.sort_by(|&a, &b| sizes[b].cmp(&sizes[a]));
     let keep = &order[..4];
@@ -610,7 +610,7 @@ fn py_splitlines(text: &str) -> Vec<&str> {
     lines
 }
 
-/// `str.format`의 이름 칸만 : 이 저장소의 틀 파일에는 `{이름}`뿐이다. 칸에 들어간 값은 다시 읽지 않는다
+/// `str.format`의 이름 칸만 : 이 저장소의 틀 파일에는 `{이름}`뿐. 칸에 들어간 값은 다시 읽지 않음
 fn fill(template: &str, fields: &[(&str, &str)]) -> String {
     let mut out = String::with_capacity(template.len());
     let mut rest = template;
@@ -646,7 +646,7 @@ color is one of {}: odd = the two eyes differ.",
 }
 
 /// `str(value or "").strip().lower().replace(" ", "-")`가 허용 값과 같으면 그 값
-/// 문자열이 아닌 값은 `str()`이 허용 값과 같을 수 없다
+/// 문자열이 아닌 값은 `str()`이 허용 값과 같을 수 없음
 fn pick(value: Option<&Value>, allowed: &[&str]) -> Option<String> {
     let Some(Value::String(text)) = value else {
         return None;

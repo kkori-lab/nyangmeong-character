@@ -1,5 +1,5 @@
-//! `service.py`의 관리자 경로 흐름(describe_item·draw_item·trial_preview) : 가짜 생성기·가짜 저장소로 확인한다.
-//! 외부 API(OpenAI)는 부르지 않는다. 원본 `tests/character/test_items.py`·`test_item_pixel.py`의 순서·오류 사례를 옮겼다.
+//! `service.py`의 관리자 경로 흐름(describe_item·draw_item·trial_preview) : 가짜 생성기·가짜 저장소로 확인
+//! 외부 API(OpenAI)는 부르지 않음. 원본 `tests/character/test_items.py`·`test_item_pixel.py`의 순서·오류 사례를 옮김
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
@@ -204,7 +204,7 @@ async fn draw_item_cuts_the_drawing_or_fails_with_item_image_error() {
     let png = service::draw_item(Some(&ok), &hat, "a.png", "MYPC0001", "x")
         .await
         .unwrap();
-    // PNG 바이트는 압축기가 달라 다르다(알려진 차이) : 화소로 비교
+    // PNG 바이트는 압축기가 달라 다름(알려진 차이) : 화소로 비교
     let got = pil::open_rgba(&png).unwrap();
     let gold = pil::open_rgba(&fixture("items/hat.gold.png")).unwrap();
     assert!(got == gold, "cut_item 정답과 같은 화소여야 함");

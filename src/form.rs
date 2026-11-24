@@ -1,7 +1,7 @@
 //! FastAPI가 핸들러 전에 읽는 요청 본문 : Starlette `request.form()`·`request.json()`
 //!
 //! 폼 파싱 실패는 의존성(`X-Requested-With`·인증)보다 먼저 400 `{"detail": ...}`,
-//! JSON 문법 오류도 먼저 400 INVALID_REQUEST다. 값 검증 오류는 의존성 뒤에 난다.
+//! JSON 문법 오류도 먼저 400 INVALID_REQUEST. 값 검증 오류는 의존성 뒤
 
 use crate::error::ApiError;
 use axum::http::{HeaderMap, header};
@@ -33,7 +33,7 @@ pub struct FormData {
 
 impl FormData {
     /// Starlette FormData.get : 같은 이름이면 마지막 값.
-    /// FastAPI는 빈 문자열 폼 값을 없는 값으로 본다
+    /// FastAPI는 빈 문자열 폼 값을 없는 값으로 취급
     pub fn get(&self, name: &str) -> Option<&FormValue> {
         let value = self
             .items
@@ -92,7 +92,7 @@ pub fn parse_options_header(value: Option<&str>) -> (String, Vec<(String, String
     (main, params)
 }
 
-/// `;`로 나누되 따옴표 안의 `;`는 나누지 않는다
+/// `;`로 나누되 따옴표 안의 `;`는 나누지 않음
 fn split_params(value: &str) -> Vec<String> {
     let mut parts = Vec::new();
     let mut current = String::new();

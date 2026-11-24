@@ -1,11 +1,11 @@
 //! Python `json.loads`·`json.dumps(ensure_ascii=False)`와 같은 결과를 내는 도우미
-//! `app/core/errors.py` `_hide_internal_path`가 Java 오류 본문을 다시 쓸 때 쓴다
+//! `app/core/errors.py` `_hide_internal_path`가 Java 오류 본문을 다시 쓸 때 사용
 
 use serde::Serialize;
 use serde_json::Value;
 use std::io;
 
-/// `json.loads(bytes)` : UTF-8(BOM 허용)만 받는다. 실패면 None
+/// `json.loads(bytes)` : UTF-8(BOM 허용)만 받음. 실패면 None
 pub fn loads(body: &[u8]) -> Option<Value> {
     let body = body.strip_prefix(b"\xef\xbb\xbf").unwrap_or(body);
     let text = std::str::from_utf8(body).ok()?;
@@ -17,7 +17,7 @@ const MAX_INT_DIGITS: usize = 4300;
 
 /// `json.loads(str)` 중 Python만 받는 것도 받는 읽기 : `NaN`·`Infinity`·`-Infinity` 상수,
 /// f64를 넘치는 숫자(`1e400`은 `inf`), 4300자리까지의 정수. 4300자리를 넘는 정수는 Python처럼 거절(None).
-/// 상수·넘치는 숫자는 `null`로, 실수는 f64로 다시 써서 읽는다 : 숫자 값은 쓰지 않고 문자열 칸만 보는 곳에서만 쓴다
+/// 상수·넘치는 숫자는 `null`로, 실수는 f64로 다시 써서 읽음 : 숫자 값은 쓰지 않고 문자열 칸만 보는 곳에서만 사용
 pub fn loads_str_lenient(text: &str) -> Option<Value> {
     let mut out = String::with_capacity(text.len());
     let mut in_string = false;
@@ -82,7 +82,7 @@ fn number_len(text: &str) -> usize {
     end
 }
 
-/// 숫자 토큰 하나를 serde가 받는 모양으로 쓴다. 정수가 4300자리를 넘으면 None
+/// 숫자 토큰 하나를 serde가 받는 모양으로 씀. 정수가 4300자리를 넘으면 None
 fn push_number(out: &mut String, token: &str) -> Option<()> {
     let is_float = token.contains(['.', 'e', 'E']);
     let digits = token.bytes().filter(u8::is_ascii_digit).count();
@@ -95,7 +95,7 @@ fn push_number(out: &mut String, token: &str) -> Option<()> {
             return Some(());
         }
     }
-    // serde는 f64를 넘치는 수와 아주 큰 지수를 거절하지만 Python은 `inf`·0으로 읽는다
+    // serde는 f64를 넘치는 수와 아주 큰 지수를 거절하지만 Python은 `inf`·0으로 읽음
     match token.parse::<f64>() {
         Ok(value) if value.is_finite() => out.push_str(&format!("{value:?}")),
         _ => out.push_str("null"),

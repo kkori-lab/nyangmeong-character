@@ -1,6 +1,6 @@
 //! `app/character/service.py` : 캐릭터·아이템 업무 흐름
 //!
-//! 굽기 큐는 `queue.rs`. 응답 뒤에 할 일(`generate_and_report`·`regenerate_and_report`)은 경로가 `tokio::spawn`으로 띄운다
+//! 굽기 큐는 `queue.rs`. 응답 뒤에 할 일(`generate_and_report`·`regenerate_and_report`)은 경로가 `tokio::spawn`으로 띄움
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -23,6 +23,18 @@ use crate::repository::{CharacterFailure, CharacterJob, CharacterJobRepository, 
 use crate::response::AppError;
 
 const LOGGER: &str = "app.character.service";
+
+/// 로그용 실패 이유 한 줄 : Java 4xx는 상태 숫자, AppError는 오류 코드(본문·쿠키·경로 숫자는 남기지 않음)
+/// 원본은 traceback 마지막 줄에 예외 이름만 남김(`migration.md` "알려진 차이")
+pub fn cause(error: &ApiError) -> String {
+    match error {
+        ApiError::App(e) => e.code.clone(),
+        ApiError::Backend(e) => format!("Java {}", e.status_code),
+        ApiError::Validation => "Validation".into(),
+        ApiError::Http { status, .. } => format!("HTTP {status}"),
+        ApiError::Internal => "Internal".into(),
+    }
+}
 
 pub fn check_region(regn_cd: &str) -> Result<(), ApiError> {
     if engine::is_bake_region(regn_cd) {
@@ -93,7 +105,7 @@ pub async fn draw_item<C: CharacterClient>(
         .draw_item(image, regn_cd, item_nm)
         .await
         .map_err(|CharacterApiError| item_image_error())?;
-    // ItemImageError·OSError(PIL이 그림으로 못 읽음)·ValueError는 502, 그 밖의 예외는 그대로 올라간다
+    // ItemImageError·OSError(PIL이 그림으로 못 읽음)·ValueError는 502, 그 밖의 예외는 그대로 올라감
     let cut = heavy(move || engine::cut_item(&drawn)).await;
     match cut {
         Ok(Ok(png)) => Ok(png),
@@ -111,7 +123,7 @@ pub async fn draw_item<C: CharacterClient>(
     }
 }
 
-/// `_bake_once`가 실패한 이유 : 큐와 시험 굽기가 모두 "실패"로만 본다
+/// `_bake_once`가 실패한 이유 : 큐와 시험 굽기가 모두 "실패"로만 취급
 #[derive(Debug)]
 pub enum BakeError {
     /// 굽기 입력 만들기·검증(이미지 계산)
@@ -171,7 +183,7 @@ pub async fn bake_once<C: CharacterClient, R: CharacterJobRepository>(
     Ok(worn)
 }
 
-/// 부위 코드별 착용 시트를 입혀 합성 PNG를 만든다 (실패하면 502)
+/// 부위 코드별 착용 시트를 입혀 합성 PNG 생성 (실패하면 502)
 pub async fn render(
     bare: &Bytes,
     layout: Layout,
@@ -268,7 +280,7 @@ pub async fn create_job<C: CharacterClient, R: CharacterJobRepository>(
 }
 
 /// FN-MYP-010-23 : 관리자 무료 재생성 입구(`router.py:regenerate_character`).
-/// 생성기가 없으면 Java를 부르지 않고 502, 있으면 응답 뒤 `regenerate_and_report`를 띄운다
+/// 생성기가 없으면 Java를 부르지 않고 502, 있으면 응답 뒤 `regenerate_and_report`를 띄움
 pub fn regenerate<C, R>(
     client: Option<Arc<C>>,
     repo: Arc<R>,
@@ -307,21 +319,27 @@ pub async fn regenerate_and_report<C, R>(
 {
     let job = match repo.regen_start(char_crt_job_sn).await {
         Ok(job) => job,
-        Err(_) => {
+        Err(error) => {
             // 이미 처리 중(409)·REGEN 작업 아님(404) 등 : 보고할 곳이 없어 Java 시간 초과 배치가 정리
             logs::error(
                 LOGGER,
-                format!("재생성 시작 실패: charCrtJobSn={char_crt_job_sn}"),
+                format!(
+                    "재생성 시작 실패: charCrtJobSn={char_crt_job_sn}: {}",
+                    cause(&error)
+                ),
             );
             return;
         }
     };
     let photo = match repo.fetch_original_photo(char_crt_job_sn).await {
         Ok(photo) => photo,
-        Err(_) => {
+        Err(error) => {
             logs::error(
                 LOGGER,
-                format!("재생성 원본 사진 조회 실패: charCrtJobSn={char_crt_job_sn}"),
+                format!(
+                    "재생성 원본 사진 조회 실패: charCrtJobSn={char_crt_job_sn}: {}",
+                    cause(&error)
+                ),
             );
             report_failure(&*repo, &job, CharacterFailure::InputError).await;
             return;
@@ -332,7 +350,7 @@ pub async fn regenerate_and_report<C, R>(
 }
 
 /// FN-MYP-010-09 : 응답 뒤 백그라운드 생성, 결과·상태 Java 보고, 이어서 굽기
-/// `file_name`이 있으면(첫 생성) 원본 사진도 success에 실어 무료 재생성 입력으로 남긴다
+/// `file_name`이 있으면(첫 생성) 원본 사진도 success에 실어 무료 재생성 입력으로 남김
 pub async fn generate_and_report<C, R>(
     client: Arc<C>,
     repo: Arc<R>,
@@ -378,13 +396,14 @@ pub async fn generate_and_report<C, R>(
         .await;
     let pixel_char_sn = match reported {
         Ok(sn) => sn,
-        Err(_) => {
+        Err(error) => {
             // 보고 실패로 멈춘 작업은 Java가 타임아웃으로 정리
             logs::error(
                 LOGGER,
                 format!(
-                    "캐릭터 성공 보고 실패: charCrtJobSn={}",
-                    job.char_crt_job_sn
+                    "캐릭터 성공 보고 실패: charCrtJobSn={}: {}",
+                    job.char_crt_job_sn,
+                    cause(&error)
                 ),
             );
             return;
@@ -393,10 +412,13 @@ pub async fn generate_and_report<C, R>(
     // FN-MYP-011-01 : 사자마자 입도록 전 아이템 미리 굽기
     let targets = match repo.list_bake_items().await {
         Ok(targets) => targets,
-        Err(_) => {
+        Err(error) => {
             logs::error(
                 LOGGER,
-                format!("굽기 대상 조회 실패: pixelCharSn={pixel_char_sn}"),
+                format!(
+                    "굽기 대상 조회 실패: pixelCharSn={pixel_char_sn}: {}",
+                    cause(&error)
+                ),
             );
             return;
         }
@@ -647,7 +669,7 @@ mod tests {
     use crate::clients::OpenAiClient;
     use crate::repository::{BakeTargetPage, CharacterSheets};
 
-    /// 어떤 메서드도 불리면 안 되는 저장소 : 생성기 없음 502는 Java를 부르기 전에 난다
+    /// 어떤 메서드도 불리면 안 되는 저장소 : 생성기 없음 502는 Java를 부르기 전에 발생
     struct Untouched;
 
     fn touched<T>() -> Result<T, ApiError> {
@@ -729,5 +751,26 @@ mod tests {
 
         assert_eq!(external(error), (502, "EXTERNAL_API_ERROR".into()));
         assert!(queue.pending().is_empty());
+    }
+
+    #[test]
+    fn cause_names_backend_status_and_app_code() {
+        use crate::backend::BackendError;
+        let backend = ApiError::from(BackendError {
+            status_code: 403,
+            body: Bytes::from_static(b"{\"code\":\"FORBIDDEN\"}"),
+            content_type: None,
+            set_cookies: Vec::new(),
+        });
+        assert_eq!(cause(&backend), "Java 403");
+        assert_eq!(cause(&external_error().into()), "EXTERNAL_API_ERROR");
+        assert_eq!(cause(&ApiError::Internal), "Internal");
+        assert_eq!(cause(&ApiError::Validation), "Validation");
+        let http = ApiError::Http {
+            status: 405,
+            detail: "Method Not Allowed".into(),
+            allow: None,
+        };
+        assert_eq!(cause(&http), "HTTP 405");
     }
 }

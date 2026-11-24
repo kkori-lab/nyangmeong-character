@@ -1,6 +1,6 @@
-//! `app/character/router.py` 경로 8개 : 본문 읽기 → X-Requested-With → 인증 → 값 검증 → 핸들러 순서가 Python과 같다
-//! - 차이: Starlette `BackgroundTasks`는 응답 본문을 다 보낸 뒤 시작한다. 여기는 응답을 돌려주기 직전에
-//!   `tokio::spawn`으로 띄워 Java 호출이 응답보다 먼저 갈 수 있다(응답·Java가 받는 요청은 같음)
+//! `app/character/router.py` 경로 8개 : 본문 읽기 → X-Requested-With → 인증 → 값 검증 → 핸들러 순서가 Python과 같음
+//! - 차이: Starlette `BackgroundTasks`는 응답 본문을 다 보낸 뒤 시작. 여기는 응답을 돌려주기 직전에
+//!   `tokio::spawn`으로 띄워 Java 호출이 응답보다 먼저 갈 수 있음(응답·Java가 받는 요청은 같음)
 
 use crate::auth;
 use crate::backend::Backend;
@@ -47,7 +47,7 @@ pub struct Matched {
     pub param: Option<String>,
 }
 
-/// Starlette 경로 정규식 `{name}` = `[^/]+`, 디코딩된 경로로 맞춘다
+/// Starlette 경로 정규식 `{name}` = `[^/]+`, 디코딩된 경로로 맞춤
 pub fn match_path(path: &str) -> Option<Matched> {
     let segments: Vec<&str> = path.strip_prefix('/')?.split('/').collect();
     let param = |s: &str| (!s.is_empty()).then(|| s.to_owned());
@@ -283,7 +283,7 @@ pub async fn handle(matched: Matched, ctx: Ctx<'_>) -> Result<Response, ApiError
 }
 
 /// 아직 안 구운 아이템 : 응답 뒤 굽고 409 `ITEM_BAKING`
-/// (Python은 예외로 끝내면 백그라운드 작업이 버려져 `response.error`를 직접 돌려준다. 응답 모양은 같다)
+/// (Python은 예외로 끝내면 백그라운드 작업이 버려져 `response.error`를 직접 돌려줌. 응답 모양은 같음)
 fn item_baking(queue: &Arc<AppQueue>) -> ApiError {
     let queue = queue.clone();
     tokio::spawn(async move { queue.drain().await });

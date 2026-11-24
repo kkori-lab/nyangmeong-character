@@ -1,7 +1,7 @@
 //! scipy.ndimage 1.18.1 : `label`·`binary_fill_holes`·`binary_erosion`·`binary_dilation`·`binary_opening`·`binary_propagation`
 //!
-//! 이미지 계산(`engine.py`·`canvas.py`·`bake.py`)이 쓰는 모양만 옮겼다. 마스크는 `h × w` 행 우선 `bool`이다.
-//! - 구조는 기본 십자(4연결) 또는 3×3 전체. 이미지 밖은 항상 0(`border_value=0`)이다
+//! 이미지 계산(`engine.py`·`canvas.py`·`bake.py`)이 쓰는 모양만 옮김. 마스크는 `h × w` 행 우선 `bool`
+//! - 구조는 기본 십자(4연결) 또는 3×3 전체. 이미지 밖은 항상 0(`border_value=0`)
 
 /// scipy 구조 요소
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -100,7 +100,7 @@ pub fn binary_dilation(
     current
 }
 
-/// `ndimage.binary_erosion(mask, structure, iterations)` : 이미지 밖은 0이라 가장자리 화소는 깎인다
+/// `ndimage.binary_erosion(mask, structure, iterations)` : 이미지 밖은 0이라 가장자리 화소는 깎임
 pub fn binary_erosion(
     mask: &[bool],
     width: usize,
@@ -180,7 +180,7 @@ pub fn binary_propagation(
     reached
 }
 
-/// `ndimage.binary_fill_holes(mask)` : 가장자리와 4연결로 이어진 배경 밖은 모두 채운다
+/// `ndimage.binary_fill_holes(mask)` : 가장자리와 4연결로 이어진 배경 밖은 모두 채움
 pub fn binary_fill_holes(mask: &[bool], width: usize, height: usize) -> Vec<bool> {
     let background: Vec<bool> = mask.iter().map(|&on| !on).collect();
     let mut seeds = vec![false; mask.len()];
@@ -219,7 +219,7 @@ mod tests {
     fn label_numbers_in_raster_order_with_four_connectivity() {
         let (mask, w, h) = grid(&["#.#", ".#.", "#.#"]);
         let (labels, count) = label(&mask, w, h);
-        // 대각선은 이어지지 않는다: 5개
+        // 대각선은 이어지지 않음: 5개
         assert_eq!(count, 5);
         assert_eq!(labels, vec![1, 0, 2, 0, 3, 0, 4, 0, 5]);
     }
@@ -229,7 +229,7 @@ mod tests {
         let (mask, w, h) = grid(&["#####", "#...#", "#.#.#", "#...#", "#####"]);
         let filled = binary_fill_holes(&mask, w, h);
         assert!(filled.iter().all(|&on| on));
-        // 가장자리에 열린 곳이 있으면 채우지 않는다
+        // 가장자리에 열린 곳이 있으면 채우지 않음
         let (open, w, h) = grid(&["#####", "#...#", "#....", "#...#", "#####"]);
         assert_eq!(binary_fill_holes(&open, w, h), open);
     }
@@ -274,7 +274,7 @@ mod tests {
         let seeds: Vec<bool> = (0..allowed.len()).map(|at| at == 0).collect();
         let reached = binary_propagation(&seeds, &allowed, w, h);
         assert_eq!(show(&reached, w), vec!["###..#", "..#..#", "..####"]);
-        // 이어지지 않은 곳은 번지지 않는다
+        // 이어지지 않은 곳은 번지지 않음
         let (allowed, w, h) = grid(&["##.#"]);
         let seeds = vec![true, false, false, false];
         assert_eq!(
